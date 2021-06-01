@@ -1,0 +1,9 @@
+rust_stock_tracker
+	stock_tracker
+		// The runtime program with main.rs from which I/O will be handled primarily.
+	user
+		// This will hold all of user's info and methods
+	portfolio
+		// This will be a collection of stocks that a user holds
+	stock
+		// This will hold all of a company's info and methods
