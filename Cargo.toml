@@ -1,2 +1,6 @@
 [workspace]
-members = ["stock_tracker"]
+
+members = [
+	"stock_tracker",
+	"stock",
+]
