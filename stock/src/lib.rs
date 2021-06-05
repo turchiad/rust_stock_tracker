@@ -1,9 +1,9 @@
 //! #stock
 //!
-//! This holds the `stock` type and related methods
+//! This holds the `Stock` type and related methods
 
 /// A representative value of one share of a company's stock
-struct Stock {
+pub struct Stock {
     /// A company's ticker, typically a series of capital letters e.g. FOO, BAR, etc.
     ticker: String,
     /// A company's name

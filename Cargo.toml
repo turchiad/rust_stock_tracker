@@ -3,4 +3,5 @@
 members = [
 	"stock_tracker",
 	"stock",
+	"user",
 ]
