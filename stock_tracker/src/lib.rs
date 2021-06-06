@@ -54,7 +54,7 @@ mod tests {
     fn config_new_two_args() {
         assert!(
             match Config::new(vec![String::from("test1"), String::from("test2")].into_iter()) {
-                Ok(_) => true,
+                Ok(Config {command, remainder:_}) => command == "test2",
                 Err(_) => false,
             }
         );
@@ -67,11 +67,17 @@ mod tests {
         for i in 3..100 {
             let mut v = Vec::<String>::new();
             for j in 0..i {
-                v.push(format!("test{}", j));
+                v.push(format!("test{}", j+1));
             }
-            check &=
-                match Config::new(vec![String::from("test1"), String::from("test2")].into_iter()) {
-                    Ok(_) => true,
+            check = check &&
+                match Config::new(v.clone().into_iter()) {
+                    Ok(Config {command, remainder}) => {
+                        let check1 = command == "test2";
+                        //println!("{:?}",command);
+                        let check2 = remainder == v[2..];
+                        //println!("{:?}",remainder);
+                        check1 && check2
+                    },
                     Err(_) => false,
                 }
         }
