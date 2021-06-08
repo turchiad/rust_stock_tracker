@@ -81,7 +81,21 @@ impl Config {
     }
 }
 
+/// The `run` function represents the runtime logic of the program
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    match config.command {
+        Command::Create => "test",
+        Command::Delete => "delete",
+        Command::Login => "login",
+        Command::Logout => "logout",
+        Command::Showall => "showall"
+    };
+
+    Ok(())
+}
+
+/// The `create` function queries the user for a password, opens the HashMap and inserts a new user. 
+fn create(config: Config) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
 
