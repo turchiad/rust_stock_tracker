@@ -98,10 +98,10 @@ mod tests {
     }
 
     #[test]
-    fn config_new_one_invalid_arg() {
+    fn config_new_one_arg() {
         assert!(match Config::new(vec![String::from("test1")].into_iter()) {
             Ok(_) => false,
-            Err(x) => x == "Invalid command string",
+            Err(x) => x == "Didn't get a command string",
         });
     }
 
@@ -132,5 +132,38 @@ mod tests {
         }
 
         assert!(check);
+    }
+
+    #[test]
+    fn config_new_two_valid_args() {
+        assert!(
+            match Config::new(vec![String::from("test1"), String::from("showall")].into_iter()) {
+                Ok(Config {command: Command::Showall, ..}) => true,
+                _ => false,
+            }
+        );
+    }
+
+    #[test]
+    fn config_new_two_valid_args_invalid_num_args() {
+        assert!(
+            match Config::new(vec![String::from("test1"), String::from("create")].into_iter()) {
+                Ok(_) => false,
+                Err(x) => x == "Too few arguments provided for create",
+            }
+        );
+    }    
+
+    #[test]
+    fn config_new_three_valid_args() {
+        assert!(
+            match Config::new(vec![String::from("test1"), String::from("create"), String::from("test3")].into_iter()) {
+                Ok(Config {
+                    command: Command::Create,
+                    remainder,
+                }) => remainder == vec![String::from("test3")],
+                _ => false,
+            }
+        );
     }
 }
