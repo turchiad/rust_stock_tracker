@@ -17,6 +17,16 @@ pub struct Stock {
     value: f64,
 }
 
+impl Stock {
+    pub fn new() -> Result<Stock, String> {
+        return Ok( Stock {
+            ticker: String::from("ticker"),
+            company_name: String::from("company_name"),
+            value: 0.0,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -26,6 +26,18 @@ pub struct User {
     portfolio: HashMap<String, stock::Stock>,
 }
 
+impl User {
+    pub fn new() -> Result<User, String> {
+        return Ok(User {
+            username: String::from("username"),
+            first_name: String::from("first_name"),
+            last_name: String::from("last_name"),
+            middle_initial: String::from("middle_initial"),
+            portfolio: HashMap::<String, stock::Stock>::new(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

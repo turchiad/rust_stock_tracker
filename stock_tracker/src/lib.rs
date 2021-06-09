@@ -4,6 +4,7 @@
 
 // std
 use std::io::Write;
+use std::io::BufReader;
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
 use std::fmt; // So we may define `Display` for `Command`
@@ -124,9 +125,38 @@ fn init(_config: Config) -> Result<(), Box<dyn Error>> {
 }
 
 /// The `create` function queries the user for a password, opens the HashMap and inserts a new user. 
-fn create(config: Config) -> Result<(), Box<dyn Error>> {
-    // First, query the user for a password.
-    unimplemented!()
+fn create(_config: Config) -> Result<(), String> {
+
+    let password = String::from("test");
+
+    let file = match fs::File::open("HashMap.txt") {
+        Ok(x) => x,
+        Err(_) => return Err(String::from("HashMap.txt has not been initialized in this directory."))
+    };
+
+
+    let reader = BufReader::new(&file);
+
+    let mut hash: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
+        Ok(x) => x,
+        Err(x) => return Err(format!("{:?}",x)),
+    };
+
+    hash.insert(password, user::User::new()?);
+
+    let serialized_hash = serde_json::to_string(&hash).unwrap();
+
+    let mut file = match fs::File::create("HashMap.txt") {
+        Ok(x) => x,
+        Err(_) => return Err(String::from("Opening HashMap.txt write-only failed."))
+    };
+
+    match file.write_all(serialized_hash.as_bytes()) {
+        Err(x) => return Err(format!("{:?}",x)),
+        _ => ..,
+    };
+
+    Ok(())
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
