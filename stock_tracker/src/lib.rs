@@ -2,12 +2,24 @@
 //!
 //! This is the runtime logic for the rust_stock_tracker project
 
+// std
+use std::io::Write;
+use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
 use std::fmt; // So we may define `Display` for `Command`
+use std::fs; // So we may read/write to files.
 
+// external crates
+use rpassword; // So we may prompt the user for a password without showing their input
+use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
+use serde_json;
+
+// internal crates
+use user;
 
 /// The `Command` enum represents the variety of input cases a user could specify.
 pub enum Command {
+    Init,
     Create,
     Delete,
     Login,
@@ -20,6 +32,7 @@ impl Command {
     /// Constructor for the `Command` enum to parse a `String` input
     pub fn new(s: &str) -> Result<Command, &'static str> {
         Ok(match String::from(s).to_lowercase().as_str() {
+            "i" | "init" => Command::Init,
             "c" | "create" => Command::Create,
             "d" | "delete" => Command::Delete,
             "li" | "login" => Command::Login,
@@ -32,6 +45,7 @@ impl Command {
     /// Returns the number of arguments expected after the `Command`
     pub fn num_args(&self) -> i32 {
         match self {
+            Command::Init => 0,
             Command::Create => 1,
             Command::Delete => 1,
             Command::Login => 1,
@@ -44,6 +58,7 @@ impl Command {
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", match self{
+            Command::Init => "init",
             Command::Create => "create",
             Command::Delete => "delete",
             Command::Login => "login",
@@ -84,18 +99,53 @@ impl Config {
 /// The `run` function represents the runtime logic of the program
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     match config.command {
-        Command::Create => "test",
-        Command::Delete => "delete",
-        Command::Login => "login",
-        Command::Logout => "logout",
-        Command::Showall => "showall"
+        Command::Init => init(config)?,
+        Command::Create => create(config)?,
+        Command::Delete => delete(config)?,
+        Command::Login => login(config)?,
+        Command::Logout => logout(config)?,
+        Command::Showall => showall(config)?,
     };
+
+    Ok(())
+}
+
+/// The `init` function produces a HashMap at a default location
+fn init(_config: Config) -> Result<(), Box<dyn Error>> {
+    let hash = HashMap::<String,user::User>::new();
+
+    let serialized_hash = serde_json::to_string(&hash).unwrap();
+
+    let mut file = fs::File::create("HashMap.txt")?;
+
+    file.write_all(serialized_hash.as_bytes())?;
 
     Ok(())
 }
 
 /// The `create` function queries the user for a password, opens the HashMap and inserts a new user. 
 fn create(config: Config) -> Result<(), Box<dyn Error>> {
+    // First, query the user for a password.
+    unimplemented!()
+}
+
+/// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
+fn delete(config: Config) -> Result<(), Box<dyn Error>> {
+    unimplemented!()
+}
+
+/// The `login` function queries the user for a password, opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
+fn login(config: Config) -> Result<(), Box<dyn Error>>{
+    unimplemented!()
+}
+
+/// The `logout` function deactivates the state where certain commands will be applied on the user in question.
+fn logout(config: Config) -> Result<(), Box<dyn Error>>{
+    unimplemented!()
+}
+
+/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stocks.
+fn showall(config: Config) -> Result<(), Box<dyn Error>>{
     unimplemented!()
 }
 
