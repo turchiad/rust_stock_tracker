@@ -3,6 +3,7 @@
 //! This is the runtime logic for the rust_stock_tracker project
 
 // std
+use std::io;
 use std::io::Write;
 use std::io::BufReader;
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
@@ -11,8 +12,7 @@ use std::fmt; // So we may define `Display` for `Command`
 use std::fs; // So we may read/write to files.
 
 // external crates
-use rpassword; // So we may prompt the user for a password without showing their input
-use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
+//use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 use serde_json;
 
 // internal crates
@@ -113,38 +113,37 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 /// The `init` function produces a HashMap at a default location
 fn init(_config: Config) -> Result<(), Box<dyn Error>> {
-    let hash = HashMap::<String,user::User>::new();
+    let hash_map = HashMap::<u64,user::User>::new();
 
-    let serialized_hash = serde_json::to_string(&hash).unwrap();
+    let serialized_hash_map = serde_json::to_string(&hash_map).unwrap();
 
     let mut file = fs::File::create("HashMap.txt")?;
 
-    file.write_all(serialized_hash.as_bytes())?;
+    file.write_all(serialized_hash_map.as_bytes())?;
 
     Ok(())
 }
 
-/// The `create` function queries the user for a password, opens the HashMap and inserts a new user. 
-fn create(_config: Config) -> Result<(), String> {
+/// The `create` function opens the HashMap and inserts a new user. 
+fn create(config: Config) -> Result<(), String> {
 
-    let password = String::from("test");
+    let username = &config.remainder[0];
 
     let file = match fs::File::open("HashMap.txt") {
         Ok(x) => x,
         Err(_) => return Err(String::from("HashMap.txt has not been initialized in this directory."))
     };
 
-
     let reader = BufReader::new(&file);
 
-    let mut hash: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
+    let mut hash_map: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
         Ok(x) => x,
         Err(x) => return Err(format!("{:?}",x)),
     };
 
-    hash.insert(password, user::User::new()?);
+    hash_map.insert(username.to_string(), user::User::new()?);
 
-    let serialized_hash = serde_json::to_string(&hash).unwrap();
+    let serialized_hash = serde_json::to_string(&hash_map).unwrap();
 
     let mut file = match fs::File::create("HashMap.txt") {
         Ok(x) => x,
@@ -160,8 +159,67 @@ fn create(_config: Config) -> Result<(), String> {
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
-fn delete(config: Config) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
+fn delete(config: Config) -> Result<(), String> {
+    
+    let username = &config.remainder[0];
+
+    // Make sure the user wants to delete
+    println!("Are you sure you want to delete user profile {}", username.to_string());
+
+    let mut ans = String::new();
+
+    match io::stdin().read_line(&mut ans) {
+        Err(x) => return Err(format!("{:?}",x)),
+        _ => ..,
+    };
+
+    // Remove the newline
+    let ans = ans.trim();
+
+    // Debug
+    //println!("fc: {}, lc: {}, lc == yes: {}", ans, ans.to_lowercase(), ans.to_lowercase().as_str() == "yes");
+
+    match ans.to_lowercase().as_str() {
+        // In the case where the user is sure
+        "y" | "yes" => {
+
+            let file = match fs::File::open("HashMap.txt") {
+                Ok(x) => x,
+                Err(_) => return Err(String::from("HashMap.txt has not been initialized in this directory."))
+            };
+
+            let reader = BufReader::new(&file);
+
+            let mut hash_map: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
+                Ok(x) => x,
+                Err(x) => return Err(format!("{:?}",x)),
+            };
+
+            // Attempt removal and report failure
+            hash_map.remove(username).ok_or_else(|| format!("Username {} not found.", username))?;
+
+            let serialized_hash = serde_json::to_string(&hash_map).unwrap();
+
+            let mut file = match fs::File::create("HashMap.txt") {
+                Ok(x) => x,
+                Err(_) => return Err(String::from("Opening HashMap.txt write-only failed."))
+            };
+
+            match file.write_all(serialized_hash.as_bytes()) {
+                Err(x) => return Err(format!("{:?}",x)),
+                _ => ..,
+            };
+
+            // Report success
+            println!("User profile {} removed.", username);
+
+            Ok(())          
+        },
+        // In the case where the user declines
+        "q" | "quit" | "n" | "no" => Ok(()),
+        // In the case where the user input is not recognized
+        _ => Err(String::from("Input not recognized.")),
+    }
 }
 
 /// The `login` function queries the user for a password, opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
