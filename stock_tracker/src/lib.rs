@@ -3,20 +3,31 @@
 //! This is the runtime logic for the rust_stock_tracker project
 
 // std
-use std::io;
-use std::io::Write;
-use std::io::BufReader;
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
 use std::fmt; // So we may define `Display` for `Command`
 use std::fs; // So we may read/write to files.
+use std::io;
+use std::io::Write;
+use std::io::BufReader;
+use std::path;
 
 // external crates
-//use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
-use serde_json;
+// use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
+use serde_json; // So we may write and read the HashMap to JSON
+// use thiserror::Error; // For more structured definition of errors
 
 // internal crates
 use user;
+
+// Kinds of errors we expect
+// 1. IOError
+// 2. 
+
+// #[derive(Error, Debug)]
+// pub enum Error {
+
+// }
 
 /// The `Command` enum represents the variety of input cases a user could specify.
 pub enum Command {
@@ -111,17 +122,14 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+//
+// User-actuated functions
+//
+
 /// The `init` function produces a HashMap at a default location
-fn init(_config: Config) -> Result<(), Box<dyn Error>> {
-    let hash_map = HashMap::<u64,user::User>::new();
-
-    let serialized_hash_map = serde_json::to_string(&hash_map).unwrap();
-
-    let mut file = fs::File::create("HashMap.txt")?;
-
-    file.write_all(serialized_hash_map.as_bytes())?;
-
-    Ok(())
+fn init(_config: Config) -> Result<(), String> {
+    let hashmap = HashMap::<String, user::User>::new();
+    write_to_hashmap(&"HashMap.txt", &hashmap)
 }
 
 /// The `create` function opens the HashMap and inserts a new user. 
@@ -129,33 +137,11 @@ fn create(config: Config) -> Result<(), String> {
 
     let username = &config.remainder[0];
 
-    let file = match fs::File::open("HashMap.txt") {
-        Ok(x) => x,
-        Err(_) => return Err(String::from("HashMap.txt has not been initialized in this directory."))
-    };
+    let mut hashmap = read_from_hashmap(&"HashMap.txt")?;
 
-    let reader = BufReader::new(&file);
+    hashmap.insert(username.to_string(), user::User::new()?);
 
-    let mut hash_map: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
-        Ok(x) => x,
-        Err(x) => return Err(format!("{:?}",x)),
-    };
-
-    hash_map.insert(username.to_string(), user::User::new()?);
-
-    let serialized_hash = serde_json::to_string(&hash_map).unwrap();
-
-    let mut file = match fs::File::create("HashMap.txt") {
-        Ok(x) => x,
-        Err(_) => return Err(String::from("Opening HashMap.txt write-only failed."))
-    };
-
-    match file.write_all(serialized_hash.as_bytes()) {
-        Err(x) => return Err(format!("{:?}",x)),
-        _ => ..,
-    };
-
-    Ok(())
+    write_to_hashmap(&"HashMap.txt", &hashmap)
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
@@ -183,32 +169,12 @@ fn delete(config: Config) -> Result<(), String> {
         // In the case where the user is sure
         "y" | "yes" => {
 
-            let file = match fs::File::open("HashMap.txt") {
-                Ok(x) => x,
-                Err(_) => return Err(String::from("HashMap.txt has not been initialized in this directory."))
-            };
-
-            let reader = BufReader::new(&file);
-
-            let mut hash_map: HashMap::<String, user::User> = match serde_json::from_reader(reader) {
-                Ok(x) => x,
-                Err(x) => return Err(format!("{:?}",x)),
-            };
+            let mut hashmap = read_from_hashmap(&"HashMap.txt")?;
 
             // Attempt removal and report failure
-            hash_map.remove(username).ok_or_else(|| format!("Username {} not found.", username))?;
+            hashmap.remove(username).ok_or_else(|| format!("Username {} not found.", username))?;
 
-            let serialized_hash = serde_json::to_string(&hash_map).unwrap();
-
-            let mut file = match fs::File::create("HashMap.txt") {
-                Ok(x) => x,
-                Err(_) => return Err(String::from("Opening HashMap.txt write-only failed."))
-            };
-
-            match file.write_all(serialized_hash.as_bytes()) {
-                Err(x) => return Err(format!("{:?}",x)),
-                _ => ..,
-            };
+            write_to_hashmap(&"HashMap.txt", &hashmap)?;
 
             // Report success
             println!("User profile {} removed.", username);
@@ -232,10 +198,54 @@ fn logout(config: Config) -> Result<(), Box<dyn Error>>{
     unimplemented!()
 }
 
-/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stocks.
+/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stoc<P: AsRef<Path>>ks.
 fn showall(config: Config) -> Result<(), Box<dyn Error>>{
     unimplemented!()
 }
+
+//
+// Assistive functions
+//
+
+/// The `read_from_hashmap` function takes a `path::Path` and returns the `HashMap<String, user::User>` located at that path
+/// using `serde_JSON` to read the file.
+fn read_from_hashmap<P: AsRef<path::Path>>(path: &P) -> Result<HashMap<String, user::User>, String> {
+
+    let file = match fs::File::open(path) {
+        Ok(x) => x,
+        Err(_) => return Err(format!("{} has not been initialized in this directory.", path.as_ref().to_str().unwrap()))
+    };
+
+    let reader = io::BufReader::new(&file);
+
+    match serde_json::from_reader(reader) {
+        Ok(x) => x,
+        Err(x) => return Err(format!("{:?}",x)),
+    }
+}
+
+/// The 'write_to_hashmap` function takes a `path::Path` and a `HashMap<String, user::User>` and writes the
+/// `HashMap<String, user::User>` to the file located at that path using `serde_JSON` to write the file.
+fn write_to_hashmap<P: AsRef<path::Path>>(path: &P, hashmap: &HashMap<String, user::User>) -> Result<(), String> {
+    
+    let serialized_hashmap = serde_json::to_string(hashmap).unwrap();
+
+    let mut file = match fs::File::create(path) {
+        Ok(x) => x,
+        Err(_) => return Err(format!("Opening {} write-only failed.", path.as_ref().to_str().unwrap())),
+    };
+
+    match file.write_all(serialized_hashmap.as_bytes()) {
+        Err(x) => return Err(format!("{:?}",x)),
+        _ => ..,
+    };
+
+    Ok(())
+}
+
+//
+// Testing
+//
 
 #[cfg(test)]
 mod tests {
