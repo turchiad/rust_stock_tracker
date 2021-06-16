@@ -9,8 +9,7 @@ use std::fmt; // So we may define `Display` for `Command`
 use std::fs; // So we may read/write to files.
 use std::io;
 use std::io::Write;
-use std::io::BufReader;
-use std::path;
+use std::path::Path;
 
 // external crates
 // use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
@@ -18,7 +17,7 @@ use serde_json; // So we may write and read the HashMap to JSON
 // use thiserror::Error; // For more structured definition of errors
 
 // internal crates
-use user;
+use user::User;
 
 // Kinds of errors we expect
 // 1. IOError
@@ -128,7 +127,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 /// The `init` function produces a HashMap at a default location
 fn init(_config: Config) -> Result<(), String> {
-    let hashmap = HashMap::<String, user::User>::new();
+    let hashmap = HashMap::<String, User>::new();
     write_to_hashmap(&"HashMap.txt", &hashmap)
 }
 
@@ -137,11 +136,11 @@ fn create(config: Config) -> Result<(), String> {
 
     let username = &config.remainder[0];
 
-    let mut hashmap = read_from_hashmap(&"HashMap.txt")?;
+    let f = |hashmap: &mut HashMap<String, User>| hashmap
+        .insert(username.to_string(), User::new()?) // Insert
+        .ok_or_else(|| String::from("")).map(|_| ()); // Handle Option -> Result & discarding User
 
-    hashmap.insert(username.to_string(), user::User::new()?);
-
-    write_to_hashmap(&"HashMap.txt", &hashmap)
+    modify_hashmap(&"HashMap.txt", f)
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
@@ -153,7 +152,6 @@ fn delete(config: Config) -> Result<(), String> {
     println!("Are you sure you want to delete user profile {}", username.to_string());
 
     let mut ans = String::new();
-
     match io::stdin().read_line(&mut ans) {
         Err(x) => return Err(format!("{:?}",x)),
         _ => ..,
@@ -168,18 +166,10 @@ fn delete(config: Config) -> Result<(), String> {
     match ans.to_lowercase().as_str() {
         // In the case where the user is sure
         "y" | "yes" => {
-
-            let mut hashmap = read_from_hashmap(&"HashMap.txt")?;
-
-            // Attempt removal and report failure
-            hashmap.remove(username).ok_or_else(|| format!("Username {} not found.", username))?;
-
-            write_to_hashmap(&"HashMap.txt", &hashmap)?;
-
-            // Report success
-            println!("User profile {} removed.", username);
-
-            Ok(())          
+            let f = |hashmap: &mut HashMap<String, User>| hashmap
+                .remove(&username.to_string()) // Remove
+                .ok_or_else(|| String::from("")).map(|_| ()); // Hnandle Option -> Result & discarding User
+            modify_hashmap(&"HashMap.txt", f)
         },
         // In the case where the user declines
         "q" | "quit" | "n" | "no" => Ok(()),
@@ -207,9 +197,9 @@ fn showall(config: Config) -> Result<(), Box<dyn Error>>{
 // Assistive functions
 //
 
-/// The `read_from_hashmap` function takes a `path::Path` and returns the `HashMap<String, user::User>` located at that path
+/// The `read_from_hashmap` function takes a `Path` and returns the `HashMap<String, User>` located at that path
 /// using `serde_JSON` to read the file.
-fn read_from_hashmap<P: AsRef<path::Path>>(path: &P) -> Result<HashMap<String, user::User>, String> {
+fn read_from_hashmap<P: AsRef<Path>>(path: &P) -> Result<HashMap<String, User>, String> {
 
     let file = match fs::File::open(path) {
         Ok(x) => x,
@@ -224,9 +214,9 @@ fn read_from_hashmap<P: AsRef<path::Path>>(path: &P) -> Result<HashMap<String, u
     }
 }
 
-/// The 'write_to_hashmap` function takes a `path::Path` and a `HashMap<String, user::User>` and writes the
-/// `HashMap<String, user::User>` to the file located at that path using `serde_JSON` to write the file.
-fn write_to_hashmap<P: AsRef<path::Path>>(path: &P, hashmap: &HashMap<String, user::User>) -> Result<(), String> {
+/// The 'write_to_hashmap` function takes a `Path` and a `HashMap<String, User>` and writes the
+/// `HashMap<String, User>` to the file located at that path using `serde_JSON` to write the file.
+fn write_to_hashmap<P: AsRef<Path>>(path: &P, hashmap: &HashMap<String, User>) -> Result<(), String> {
     
     let serialized_hashmap = serde_json::to_string(hashmap).unwrap();
 
@@ -243,6 +233,14 @@ fn write_to_hashmap<P: AsRef<path::Path>>(path: &P, hashmap: &HashMap<String, us
     Ok(())
 }
 
+fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), String> where 
+    P: AsRef<Path>,
+    F: Fn(&mut HashMap<String, User>) -> Result<(), String> {
+    
+    let hashmap = &mut read_from_hashmap(path)?;
+    f(hashmap)?;
+    write_to_hashmap(path, &hashmap)
+}
 //
 // Testing
 //
