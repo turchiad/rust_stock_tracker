@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be writ
 
 
 /// A representative value of one share of a company's stock
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Stock {
     /// A company's ticker, typically a series of capital letters e.g. FOO, BAR, etc.
     ticker: String,

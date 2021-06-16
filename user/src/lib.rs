@@ -7,12 +7,14 @@ use std::collections::HashMap;
 
 // external crates
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
+use derive_more::{Display}; // So we may derive Display
 
 // internal crates
 use stock;
 
 /// A complete representation of a user and all of their corresponding data.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Display)]
+#[display(fmt = "{} {}", first_name, last_name)]
 pub struct User {
     /// A user's username. Special characters such as !,?,&,| are not valid.
     username: String,
@@ -26,6 +28,7 @@ pub struct User {
     portfolio: HashMap<String, stock::Stock>,
 }
 
+
 impl User {
     pub fn new() -> Result<User, String> {
         return Ok(User {
@@ -37,6 +40,7 @@ impl User {
         })
     }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -14,7 +14,7 @@ use std::path::Path;
 // external crates
 // use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 use serde_json; // So we may write and read the HashMap to JSON
-// use thiserror::Error; // For more structured definition of errors
+use thiserror::Error; // For more structured definition of errors
 
 // internal crates
 use user::User;
@@ -28,7 +28,21 @@ use user::User;
 
 // }
 
+/// The `ProjectError` enum represents the variants of `Error`s expected in `stock_tracker`
+#[derive(Error, Debug)]
+pub enum ProjectError {
+    #[error("Read from HashMap file at {0} unsuccessful")]
+    IOHashMapReadError(String),
+    #[error("Write to HashMap file at {0} unsuccessful")]
+    IOHashMapWriteError(String),
+    #[error("Write to HashMap at key {0} with value {1} unsuccessful")]
+    HashMapWriteError(String, User),
+    #[error("Read from HashMap at key {0} unsuccessful")]
+    HashMapReadError(String),
+}
+
 /// The `Command` enum represents the variety of input cases a user could specify.
+#[derive(Debug)]
 pub enum Command {
     Init,
     Create,
@@ -168,7 +182,7 @@ fn delete(config: Config) -> Result<(), String> {
         "y" | "yes" => {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
-                .ok_or_else(|| String::from("")).map(|_| ()); // Hnandle Option -> Result & discarding User
+                .ok_or_else(|| String::from("")).map(|_| ()); // Handle Option -> Result & discarding User
             modify_hashmap(&"HashMap.txt", f)
         },
         // In the case where the user declines
