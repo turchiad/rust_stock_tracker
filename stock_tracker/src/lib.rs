@@ -36,8 +36,8 @@ pub enum ProjectError {
     SerializeJSONError,
     #[error("Deserialization of JSON file {} unsuccessful", .0.display())]
     DeserializeJSONError(PathBuf),
-    #[error("Insert to HashMap at key {0} with value {1} unsuccessful")]
-    HashMapInsertError(String, User),
+    #[error("Insertion to HashMap failed: key {0} is already occupied.")]
+    HashMapInsertError(String),
     #[error("Remove from HashMap at key {0} unsuccessful")]
     HashMapRemoveError(String),
     #[error("Error creating new User")]
@@ -162,10 +162,8 @@ fn create(config: Config) -> Result<(), ProjectError> {
     let username = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, User>| {
-        let user = User::new().map_err(|_| UserNewError)?;
-        let user_c = user.clone();
-        hashmap.try_insert(String::from(username),user)
-        .map_or_else(|_| Err(HashMapInsertError(String::from(username),user_c)), |_| Ok(()))
+        hashmap.try_insert(String::from(username), User::new().map_err(|_| UserNewError)?)
+        .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
     modify_hashmap(&"HashMap.txt", f)
