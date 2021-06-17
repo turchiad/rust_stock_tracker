@@ -2,12 +2,14 @@
 //!
 //! This holds the `Stock` type and related methods
 
+// std
+
+
 // external crates
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 
-
 /// A representative value of one share of a company's stock
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Clone, Deserialize, Debug)]
 pub struct Stock {
     /// A company's ticker, typically a series of capital letters e.g. FOO, BAR, etc.
     ticker: String,

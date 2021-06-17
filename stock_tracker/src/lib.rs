@@ -2,6 +2,9 @@
 //!
 //! This is the runtime logic for the rust_stock_tracker project
 
+// features
+#![feature(map_try_insert)]
+
 // std
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
@@ -10,6 +13,8 @@ use std::fs; // So we may read/write to files.
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
+
 
 // external crates
 // use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
@@ -18,27 +23,33 @@ use thiserror::Error; // For more structured definition of errors
 
 // internal crates
 use user::User;
-
-// Kinds of errors we expect
-// 1. IOError
-// 2. 
-
-// #[derive(Error, Debug)]
-// pub enum Error {
-
-// }
+use ProjectError::*; // To increse readability
 
 /// The `ProjectError` enum represents the variants of `Error`s expected in `stock_tracker`
 #[derive(Error, Debug)]
 pub enum ProjectError {
-    #[error("Read from HashMap file at {0} unsuccessful")]
-    IOHashMapReadError(String),
-    #[error("Write to HashMap file at {0} unsuccessful")]
-    IOHashMapWriteError(String),
-    #[error("Write to HashMap at key {0} with value {1} unsuccessful")]
-    HashMapWriteError(String, User),
-    #[error("Read from HashMap at key {0} unsuccessful")]
-    HashMapReadError(String),
+    #[error("Read from HashMap file {} unsuccessful", .0.display())]
+    IOHashMapOpenError(PathBuf),
+    #[error("Write to HashMap file at {} unsuccessful", .0.display())]
+    IOHashMapWriteError(PathBuf),
+    #[error("Serialization unsuccessful")]
+    SerializeJSONError,
+    #[error("Deserialization of JSON file {} unsuccessful", .0.display())]
+    DeserializeJSONError(PathBuf),
+    #[error("Insert to HashMap at key {0} with value {1} unsuccessful")]
+    HashMapInsertError(String, User),
+    #[error("Remove from HashMap at key {0} unsuccessful")]
+    HashMapRemoveError(String),
+    #[error("Error creating new User")]
+    UserNewError,
+    #[error("No command string provided.")]
+    ConfigNoCommandError,
+    #[error("Too few arguments provided for {0}")]
+    ConfigArgumentsError(String),
+    #[error("Command string not recognized.")]
+    CommandInvalidError,
+    #[error("Input not recognized.")]
+    InvalidInputError,
 }
 
 /// The `Command` enum represents the variety of input cases a user could specify.
@@ -55,7 +66,7 @@ pub enum Command {
 impl Command {
 
     /// Constructor for the `Command` enum to parse a `String` input
-    pub fn new(s: &str) -> Result<Command, &'static str> {
+    pub fn new(s: &str) -> Result<Command, ProjectError> {
         Ok(match String::from(s).to_lowercase().as_str() {
             "i" | "init" => Command::Init,
             "c" | "create" => Command::Create,
@@ -63,7 +74,7 @@ impl Command {
             "li" | "login" => Command::Login,
             "lo" | "logout" => Command::Logout,
             "sa" | "showall" => Command::Showall,
-            _ => return Err("Invalid command string"),
+            _ => return Err(CommandInvalidError),
         })
     }
 
@@ -102,19 +113,19 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new<Args: Iterator<Item = String>>(mut args: Args) -> Result<Config, String> {
+    pub fn new<Args: Iterator<Item = String>>(mut args: Args) -> Result<Config, ProjectError> {
         args.next(); // Discard the first argument
 
         let command = match args.next() {
             Some(arg) => Command::new(&arg)?, // Return Err if invalid
-            None => return Err(String::from("Didn't get a command string")),
+            None => return Err(ConfigNoCommandError),
         };
 
         let remainder: Vec<String> = args.collect();
 
         // Check if valid # of args have been provided
         if (remainder.len() as i32) < command.num_args() {
-            return Err(format!("Too few arguments provided for {}", command))
+            return Err(ConfigArgumentsError(format!("{}",command)));
         }
 
         Ok(Config { command, remainder })
@@ -140,25 +151,28 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 //
 
 /// The `init` function produces a HashMap at a default location
-fn init(_config: Config) -> Result<(), String> {
+fn init(_config: Config) -> Result<(), ProjectError> {
     let hashmap = HashMap::<String, User>::new();
     write_to_hashmap(&"HashMap.txt", &hashmap)
 }
 
 /// The `create` function opens the HashMap and inserts a new user. 
-fn create(config: Config) -> Result<(), String> {
+fn create(config: Config) -> Result<(), ProjectError> {
 
     let username = &config.remainder[0];
 
-    let f = |hashmap: &mut HashMap<String, User>| hashmap
-        .insert(username.to_string(), User::new()?) // Insert
-        .ok_or_else(|| String::from("")).map(|_| ()); // Handle Option -> Result & discarding User
+    let f = |hashmap: &mut HashMap<String, User>| {
+        let user = User::new().map_err(|_| UserNewError)?;
+        let user_c = user.clone();
+        hashmap.try_insert(String::from(username),user)
+        .map_or_else(|_| Err(HashMapInsertError(String::from(username),user_c)), |_| Ok(()))
+    };
 
     modify_hashmap(&"HashMap.txt", f)
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
-fn delete(config: Config) -> Result<(), String> {
+fn delete(config: Config) -> Result<(), ProjectError> {
     
     let username = &config.remainder[0];
 
@@ -166,10 +180,7 @@ fn delete(config: Config) -> Result<(), String> {
     println!("Are you sure you want to delete user profile {}", username.to_string());
 
     let mut ans = String::new();
-    match io::stdin().read_line(&mut ans) {
-        Err(x) => return Err(format!("{:?}",x)),
-        _ => ..,
-    };
+    io::stdin().read_line(&mut ans).map_err(|_| UserNewError)?;
 
     // Remove the newline
     let ans = ans.trim();
@@ -182,13 +193,13 @@ fn delete(config: Config) -> Result<(), String> {
         "y" | "yes" => {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
-                .ok_or_else(|| String::from("")).map(|_| ()); // Handle Option -> Result & discarding User
+                .ok_or_else(|| HashMapRemoveError(username.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
             modify_hashmap(&"HashMap.txt", f)
         },
         // In the case where the user declines
         "q" | "quit" | "n" | "no" => Ok(()),
         // In the case where the user input is not recognized
-        _ => Err(String::from("Input not recognized.")),
+        _ => Err(InvalidInputError),
     }
 }
 
@@ -213,43 +224,35 @@ fn showall(config: Config) -> Result<(), Box<dyn Error>>{
 
 /// The `read_from_hashmap` function takes a `Path` and returns the `HashMap<String, User>` located at that path
 /// using `serde_JSON` to read the file.
-fn read_from_hashmap<P: AsRef<Path>>(path: &P) -> Result<HashMap<String, User>, String> {
+fn read_from_hashmap<P: AsRef<Path>>(path: &P) -> Result<HashMap<String, User>, ProjectError> {
 
     let file = match fs::File::open(path) {
         Ok(x) => x,
-        Err(_) => return Err(format!("{} has not been initialized in this directory.", path.as_ref().to_str().unwrap()))
+        Err(_) => return Err(IOHashMapOpenError(PathBuf::from(path.as_ref())))
     };
 
     let reader = io::BufReader::new(&file);
 
-    match serde_json::from_reader(reader) {
-        Ok(x) => x,
-        Err(x) => return Err(format!("{:?}",x)),
-    }
+    serde_json::from_reader(reader).map_err(|_| DeserializeJSONError(PathBuf::from(path.as_ref())))
 }
 
 /// The 'write_to_hashmap` function takes a `Path` and a `HashMap<String, User>` and writes the
 /// `HashMap<String, User>` to the file located at that path using `serde_JSON` to write the file.
-fn write_to_hashmap<P: AsRef<Path>>(path: &P, hashmap: &HashMap<String, User>) -> Result<(), String> {
+fn write_to_hashmap<P: AsRef<Path>>(path: &P, hashmap: &HashMap<String, User>) -> Result<(), ProjectError> {
     
-    let serialized_hashmap = serde_json::to_string(hashmap).unwrap();
+    let serialized_hashmap = serde_json::to_string(hashmap).map_err(|_| SerializeJSONError)?;
 
     let mut file = match fs::File::create(path) {
         Ok(x) => x,
-        Err(_) => return Err(format!("Opening {} write-only failed.", path.as_ref().to_str().unwrap())),
+        Err(_) => return Err(IOHashMapOpenError(PathBuf::from(path.as_ref()))),
     };
 
-    match file.write_all(serialized_hashmap.as_bytes()) {
-        Err(x) => return Err(format!("{:?}",x)),
-        _ => ..,
-    };
-
-    Ok(())
+    file.write_all(serialized_hashmap.as_bytes()).map_err(|_| IOHashMapWriteError(PathBuf::from(path.as_ref())))
 }
 
-fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), String> where 
+fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), ProjectError> where 
     P: AsRef<Path>,
-    F: Fn(&mut HashMap<String, User>) -> Result<(), String> {
+    F: Fn(&mut HashMap<String, User>) -> Result<(), ProjectError> {
     
     let hashmap = &mut read_from_hashmap(path)?;
     f(hashmap)?;
@@ -263,81 +266,86 @@ fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), String> where
 mod tests {
     use super::*;
 
-    #[test]
-    fn config_new_no_args() {
-        assert!(match Config::new(Vec::<String>::new().into_iter()) {
-            Ok(_) => false,
-            Err(x) => x == "Didn't get a command string",
-        });
-    }
+    mod config_tests {
 
-    #[test]
-    fn config_new_one_arg() {
-        assert!(match Config::new(vec![String::from("test1")].into_iter()) {
-            Ok(_) => false,
-            Err(x) => x == "Didn't get a command string",
-        });
-    }
+        use super::*;
 
-    #[test]
-    fn config_new_two_invalid_args() {
-        assert!(
-            match Config::new(vec![String::from("test1"), String::from("test2")].into_iter()) {
+        #[test]
+        fn config_new_no_args() {
+            assert!(match Config::new(Vec::<String>::new().into_iter()) {
                 Ok(_) => false,
-                Err(x) => x == "Invalid command string",
-            }
-        );
-    }
+                Err(x) => x == "Didn't get a command string",
+            });
+        }
 
-    #[test]
-    fn config_new_many_invalid_args() {
-        let mut check = true;
+        #[test]
+        fn config_new_one_arg() {
+            assert!(match Config::new(vec![String::from("test1")].into_iter()) {
+                Ok(_) => false,
+                Err(x) => x == "Didn't get a command string",
+            });
+        }
 
-        for i in 3..100 {
-            let mut v = Vec::<String>::new();
-            for j in 0..i {
-                v.push(format!("test{}", j+1));
-            }
-            check = check &&
-                match Config::new(v.clone().into_iter()) {
+        #[test]
+        fn config_new_two_invalid_args() {
+            assert!(
+                match Config::new(vec![String::from("test1"), String::from("test2")].into_iter()) {
                     Ok(_) => false,
                     Err(x) => x == "Invalid command string",
                 }
+            );
         }
 
-        assert!(check);
-    }
+        #[test]
+        fn config_new_many_invalid_args() {
+            let mut check = true;
 
-    #[test]
-    fn config_new_two_valid_args() {
-        assert!(
-            match Config::new(vec![String::from("test1"), String::from("showall")].into_iter()) {
-                Ok(Config {command: Command::Showall, ..}) => true,
-                _ => false,
+            for i in 3..100 {
+                let mut v = Vec::<String>::new();
+                for j in 0..i {
+                    v.push(format!("test{}", j+1));
+                }
+                check = check &&
+                    match Config::new(v.clone().into_iter()) {
+                        Ok(_) => false,
+                        Err(x) => x == "Invalid command string",
+                    }
             }
-        );
-    }
 
-    #[test]
-    fn config_new_two_valid_args_invalid_num_args() {
-        assert!(
-            match Config::new(vec![String::from("test1"), String::from("create")].into_iter()) {
-                Ok(_) => false,
-                Err(x) => x == "Too few arguments provided for create",
-            }
-        );
-    }    
+            assert!(check);
+        }
 
-    #[test]
-    fn config_new_three_valid_args() {
-        assert!(
-            match Config::new(vec![String::from("test1"), String::from("create"), String::from("test3")].into_iter()) {
-                Ok(Config {
-                    command: Command::Create,
-                    remainder,
-                }) => remainder == vec![String::from("test3")],
-                _ => false,
-            }
-        );
+        #[test]
+        fn config_new_two_valid_args() {
+            assert!(
+                match Config::new(vec![String::from("test1"), String::from("showall")].into_iter()) {
+                    Ok(Config {command: Command::Showall, ..}) => true,
+                    _ => false,
+                }
+            );
+        }
+
+        #[test]
+        fn config_new_two_valid_args_invalid_num_args() {
+            assert!(
+                match Config::new(vec![String::from("test1"), String::from("create")].into_iter()) {
+                    Ok(_) => false,
+                    Err(x) => x == "Too few arguments provided for create",
+                }
+            );
+        }    
+
+        #[test]
+        fn config_new_three_valid_args() {
+            assert!(
+                match Config::new(vec![String::from("test1"), String::from("create"), String::from("test3")].into_iter()) {
+                    Ok(Config {
+                        command: Command::Create,
+                        remainder,
+                    }) => remainder == vec![String::from("test3")],
+                    _ => false,
+                }
+            );
+        }
     }
 }

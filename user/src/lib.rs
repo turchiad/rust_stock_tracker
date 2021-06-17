@@ -13,7 +13,7 @@ use derive_more::{Display}; // So we may derive Display
 use stock;
 
 /// A complete representation of a user and all of their corresponding data.
-#[derive(Serialize, Deserialize, Debug, Display)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display)]
 #[display(fmt = "{} {}", first_name, last_name)]
 pub struct User {
     /// A user's username. Special characters such as !,?,&,| are not valid.
