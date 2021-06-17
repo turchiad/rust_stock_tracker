@@ -8,6 +8,7 @@
 // std
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
+use std::env; // So we can set the configuration path by environment variables
 use std::fmt; // So we may define `Display` for `Command`
 use std::fs; // So we may read/write to files.
 use std::io;
@@ -17,6 +18,7 @@ use std::path::PathBuf;
 
 
 // external crates
+use dirs;
 // use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 use serde_json; // So we may write and read the HashMap to JSON
 use thiserror::Error; // For more structured definition of errors
@@ -46,6 +48,10 @@ pub enum ProjectError {
     ConfigNoCommandError,
     #[error("Too few arguments provided for {0}")]
     ConfigArgumentsError(String),
+    #[error("Creation of directories to {} unsuccessful", .0.display())]
+    ConfigCreateDirectoryError(PathBuf),
+    #[error("Unexpected error: home directory not found. Consider specifying a configuration directory by setting \"RUST_STOCK_TRACKER_CONFIGURATION_DIRECTORY\"")]
+    ConfigHomeDirectoryNotFoundError,
     #[error("Command string not recognized.")]
     CommandInvalidError,
     #[error("Input not recognized.")]
@@ -110,25 +116,46 @@ pub struct Config {
     pub command: Command,
     /// The remainder of arguments which may be processed differently depending on the command.
     pub remainder: Vec<String>,
+    /// The location of the program's configuration files
+    pub configuration_directory: PathBuf, 
 }
 
 impl Config {
     pub fn new<Args: Iterator<Item = String>>(mut args: Args) -> Result<Config, ProjectError> {
         args.next(); // Discard the first argument
 
+        // command
         let command = match args.next() {
             Some(arg) => Command::new(&arg)?, // Return Err if invalid
             None => return Err(ConfigNoCommandError),
         };
-
+        // remainder
         let remainder: Vec<String> = args.collect();
+        // configuration_directory
+        let configuration_directory = match env::var("RUST_STOCK_TRACKER_CONFIGURATION_DIRECTORY") {
+            Ok(x) if x != "" => PathBuf::from(x),
+            _ => PathBuf::from( match dirs::home_dir() {
+                Some(p) => p.join(".rust_stock_tracker"),
+                None => return Err(ConfigHomeDirectoryNotFoundError),
+            }),
+        };
 
-        // Check if valid # of args have been provided
-        if (remainder.len() as i32) < command.num_args() {
+        // Checking validity
+        //  remainder
+        if (remainder.len() as i32) < command.num_args() { // Check if valid # of args have been provided
             return Err(ConfigArgumentsError(format!("{}",command)));
         }
+        //  configuration_directory
+        if !configuration_directory.exists() {
+            let configuration_directory_c = configuration_directory.clone();
+            fs::create_dir_all(&configuration_directory).map_err(|_| ConfigCreateDirectoryError(configuration_directory_c))?;
+        }
 
-        Ok(Config { command, remainder })
+        Ok(Config { command, remainder, configuration_directory})
+    }
+
+    pub fn hashmap_path(&self) -> PathBuf {
+        self.configuration_directory.join("HashMap.JSON")
     }
 }
 
@@ -151,9 +178,9 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 //
 
 /// The `init` function produces a HashMap at a default location
-fn init(_config: Config) -> Result<(), ProjectError> {
+fn init(config: Config) -> Result<(), ProjectError> {
     let hashmap = HashMap::<String, User>::new();
-    write_to_hashmap(&"HashMap.txt", &hashmap)
+    write_to_hashmap(&config.hashmap_path(), &hashmap)
 }
 
 /// The `create` function opens the HashMap and inserts a new user. 
@@ -166,7 +193,7 @@ fn create(config: Config) -> Result<(), ProjectError> {
         .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
-    modify_hashmap(&"HashMap.txt", f)
+    modify_hashmap(&config.hashmap_path(), f)
 }
 
 /// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
@@ -192,7 +219,7 @@ fn delete(config: Config) -> Result<(), ProjectError> {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
                 .ok_or_else(|| HashMapRemoveError(username.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
-            modify_hashmap(&"HashMap.txt", f)
+            modify_hashmap(&config.hashmap_path(), f)
         },
         // In the case where the user declines
         "q" | "quit" | "n" | "no" => Ok(()),
@@ -256,9 +283,8 @@ fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), ProjectError> where
     f(hashmap)?;
     write_to_hashmap(path, &hashmap)
 }
-//
+
 // Testing
-//
 
 #[cfg(test)]
 mod tests {
