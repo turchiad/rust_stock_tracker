@@ -2,9 +2,6 @@
 //!
 //! This holds the `Stock` type and related methods
 
-// std
-
-
 // external crates
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 
