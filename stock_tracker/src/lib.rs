@@ -64,10 +64,9 @@ pub enum ProjectError {
     InvalidInputError,
 }
 
-/// The `Command` enum represents the variety of input cases a user could specify.
+/// The 'UserCommand' enum represents the variety of input cases relating to users
 #[derive(Debug)]
-pub enum Command {
-    Init,
+pub enum UserCommand {
     Create,
     Delete,
     Login,
@@ -75,17 +74,37 @@ pub enum Command {
     Showall,
 }
 
+/// The 'StockCommand' enum represents the variety of input cases relating to stocks
+#[derive(Debug)]
+pub enum StockCommand {
+    Create,
+}
+
+/// The `Command` enum represents the variety of input cases a user could specify.
+#[derive(Debug)]
+pub enum Command {
+    Init,
+    // Zero State Commands
+    UserC(UserCommand),
+    // Logged In Commands
+    StockC(StockCommand),
+}
+
+
 impl Command {
 
     /// Constructor for the `Command` enum to parse a `String` input
     pub fn new(s: &str) -> Result<Command, ProjectError> {
         Ok(match String::from(s).to_lowercase().as_str() {
+            // Zero State Commands
             "i" | "init" => Command::Init,
-            "c" | "create" => Command::Create,
-            "d" | "delete" => Command::Delete,
-            "li" | "login" => Command::Login,
-            "lo" | "logout" => Command::Logout,
-            "sa" | "showall" => Command::Showall,
+            "cu" | "create-user" => Command::UserC(UserCommand::Create),
+            "du" | "delete-user" => Command::UserC(UserCommand::Delete),
+            "li" | "login" => Command::UserC(UserCommand::Login),
+            "lo" | "logout" => Command::UserC(UserCommand::Logout),
+            "sa" | "showall" => Command::UserC(UserCommand::Showall),
+            // Logged In Commands
+            "cs" | "create-stock" => Command::StockC(StockCommand::Create),
             _ => return Err(CommandInvalidError),
         })
     }
@@ -93,12 +112,15 @@ impl Command {
     /// Returns the number of arguments expected after the `Command`
     pub fn num_args(&self) -> i32 {
         match self {
+            // Zero State Commands
             Command::Init => 0,
-            Command::Create => 1,
-            Command::Delete => 1,
-            Command::Login => 1,
-            Command::Logout => 0,
-            Command::Showall => 0,
+            Command::UserC(UserCommand::Create) => 1,
+            Command::UserC(UserCommand::Delete) => 1,
+            Command::UserC(UserCommand::Login) => 1,
+            Command::UserC(UserCommand::Logout) => 0,
+            Command::UserC(UserCommand::Showall) => 0,
+            // Logged In Commands
+            Command::StockC(StockCommand::Create)  => 1,
         }
     }
 }
@@ -106,12 +128,15 @@ impl Command {
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", match self{
+            // Zero State Commands
             Command::Init => "init",
-            Command::Create => "create",
-            Command::Delete => "delete",
-            Command::Login => "login",
-            Command::Logout => "logout",
-            Command::Showall => "showall"
+            Command::UserC(UserCommand::Create) => "create-user",
+            Command::UserC(UserCommand::Delete) => "delete-user",
+            Command::UserC(UserCommand::Login) => "login",
+            Command::UserC(UserCommand::Logout) => "logout",
+            Command::UserC(UserCommand::Showall) => "showall",
+            // Logged In Commands
+            Command::StockC(StockCommand::Create) => "create-stock"
         })
     }
 }
@@ -160,8 +185,14 @@ impl Config {
         Ok(Config { command, remainder, configuration_directory})
     }
 
-    pub fn hashmap_path(&self) -> PathBuf {
-        self.configuration_directory.join("HashMap.JSON")
+    /// Simple method to return the location of the UserMap 
+    pub fn user_map_path(&self) -> PathBuf {
+        self.configuration_directory.join("UserMap.JSON")
+    }
+
+    /// Simple mthod to return the location of the StockMap
+    pub fn stock_map_path(&self) -> PathBuf {
+        self.configuration_directory.join("StockMap.JSON")
     }
 }
 
@@ -170,7 +201,7 @@ impl Config {
 pub struct State {
     /// A `bool` which is `true` if a user is logged in and `false` if no user is logged in.
     logged_in: bool,
-    /// A `String` which, when `Some(x)`, `x` should always be a key of the HashMap in `HashMap.JSON`. When `logged_in` is
+    /// A `String` which, when `Some(x)`, `x` should always be a key of the HashMap in `UserMap.JSON`. When `logged_in` is
     /// `false`, `current_user` should be `None`.
     current_user: Option<String>,
 }
@@ -274,11 +305,12 @@ impl State {
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     match config.command {
         Command::Init => init(config)?,
-        Command::Create => create(config)?,
-        Command::Delete => delete(config)?,
-        Command::Login => login(config)?,
-        Command::Logout => logout(config)?,
-        Command::Showall => showall(config)?,
+        Command::UserC(UserCommand::Create) => create_user(config)?,
+        Command::UserC(UserCommand::Delete) => delete_user(config)?,
+        Command::UserC(UserCommand::Login) => login(config)?,
+        Command::UserC(UserCommand::Logout) => logout(config)?,
+        Command::UserC(UserCommand::Showall) => showall(config)?,
+        Command::StockC(StockCommand::Create) => create_stock(config)?,
     };
 
     Ok(())
@@ -291,11 +323,11 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 /// The `init` function produces a HashMap at a default location
 fn init(config: Config) -> Result<(), ProjectError> {
     let hashmap = HashMap::<String, User>::new();
-    write_to_hashmap(&config.hashmap_path(), &hashmap)
+    write_to_hashmap(&config.user_map_path(), &hashmap)
 }
 
-/// The `create` function opens the HashMap and inserts a new user. 
-fn create(config: Config) -> Result<(), ProjectError> {
+/// The `create_user` function opens the HashMap and inserts a new user. 
+fn create_user(config: Config) -> Result<(), ProjectError> {
 
     let username = &config.remainder[0];
 
@@ -304,11 +336,11 @@ fn create(config: Config) -> Result<(), ProjectError> {
         .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
-    modify_hashmap(&config.hashmap_path(), f)
+    modify_hashmap(&config.user_map_path(), f)
 }
 
-/// The `delete` function queries the user for a confirmation, opens the HashMap, and deletes a user.
-fn delete(config: Config) -> Result<(), ProjectError> {
+/// The `delete_user` function queries the user for a confirmation, opens the HashMap, and deletes a user.
+fn delete_user(config: Config) -> Result<(), ProjectError> {
     
     let username = &config.remainder[0];
 
@@ -330,7 +362,7 @@ fn delete(config: Config) -> Result<(), ProjectError> {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
                 .ok_or_else(|| HashMapRemoveError(username.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
-            modify_hashmap(&config.hashmap_path(), f)
+            modify_hashmap(&config.user_map_path(), f)
         },
         // In the case where the user declines
         "q" | "quit" | "n" | "no" => Ok(()),
@@ -344,7 +376,7 @@ fn login(config: Config) -> Result<(), Box<dyn Error>>{
     // Setup
     let username = String::from(&config.remainder[0]);
     let mut state = State::init(&config)?;
-    let hashmap = read_from_hashmap(&config.hashmap_path())?;
+    let hashmap = read_from_hashmap(&config.user_map_path())?;
     // Login
     state.try_set_user(config, &username, hashmap)?;
     println!("Logged in as {} successfully.", username);
@@ -360,7 +392,11 @@ fn logout(config: Config) -> Result<(), ProjectError>{
 }
 
 /// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stoc<P: AsRef<Path>>ks.
-fn showall(config: Config) -> Result<(), Box<dyn Error>>{
+fn showall(config: Config) -> Result<(), ProjectError>{
+    unimplemented!()
+}
+
+fn create_stock(config: Config) -> Result<(), ProjectError>{
     unimplemented!()
 }
 
