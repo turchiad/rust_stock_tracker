@@ -5,6 +5,9 @@
 // features
 #![feature(map_try_insert)]
 
+mod user;
+mod stock;
+
 // std
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
@@ -17,13 +20,13 @@ use std::path::Path;
 use std::path::PathBuf;
 
 
-// external crates
+// external cratesAs `﻿stock.rs﻿` isn't meant to me a member of `﻿user.rs﻿`, tho
 use dirs;
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 use serde_json; // So we may write and read the HashMap to JSON
 use thiserror::Error; // For more structured definition of errors
 
-// internal crates
+// modules
 use user::User;
 use ProjectError::*; // To increse readability
 
