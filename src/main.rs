@@ -10,7 +10,7 @@ fn main() {
     // Process arguments
     let config = match Config::new(env::args()) {
         Ok(x) => x,
-        Err(x) => {
+            Err(x) => {
             eprintln!("Problem parsing arguments: {}", x);
             process::exit(1);
         }

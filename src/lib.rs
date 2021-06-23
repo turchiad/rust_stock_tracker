@@ -5,144 +5,32 @@
 // features
 #![feature(map_try_insert)]
 
-mod user;
+// modules
+mod command;
+mod error;
 mod stock;
+mod user;
+
+use crate::command::*;
+use crate::error::ProjectError;
+use crate::error::ProjectError::*;
+use crate::stock::Stock;
+use crate::user::User;
 
 // std
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
 use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
 use std::env; // So we can set the configuration path by environment variables
-use std::fmt; // So we may define `Display` for `Command`
 use std::fs; // So we may read/write to files.
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-
-// external cratesAs `﻿stock.rs﻿` isn't meant to me a member of `﻿user.rs﻿`, tho
+// external crates
 use dirs;
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 use serde_json; // So we may write and read the HashMap to JSON
-use thiserror::Error; // For more structured definition of errors
-
-// modules
-use user::User;
-use ProjectError::*; // To increse readability
-
-/// The `ProjectError` enum represents the variants of `Error`s expected in `stock_tracker`
-#[derive(Error, Debug)]
-pub enum ProjectError {
-    #[error("Read from HashMap file {} unsuccessful", .0.display())]
-    IOHashMapOpenError(PathBuf),
-    #[error("Write to HashMap file at {} unsuccessful", .0.display())]
-    IOHashMapWriteError(PathBuf),
-    #[error("Read from State file {} unsuccessful", .0.display())]
-    IOStateOpenError(PathBuf),
-    #[error("Write to State file at {} unsuccessful", .0.display())]
-    IOStateWriteError(PathBuf),
-    #[error("Serialization unsuccessful")]
-    SerializeJSONError,
-    #[error("Deserialization of JSON file {} unsuccessful", .0.display())]
-    DeserializeJSONError(PathBuf),
-    #[error("Insertion to HashMap failed: key {0} is already occupied.")]
-    HashMapInsertError(String),
-    #[error("Remove from HashMap at key {0} unsuccessful")]
-    HashMapRemoveError(String),
-    #[error("Error creating new User")]
-    UserNewError,
-    #[error("No command string provided.")]
-    ConfigNoCommandError,
-    #[error("Too few arguments provided for {0}")]
-    ConfigArgumentsError(String),
-    #[error("Creation of directories to {} unsuccessful", .0.display())]
-    ConfigCreateDirectoryError(PathBuf),
-    #[error("Unexpected error: home directory not found. Consider specifying a configuration directory by setting \"RUST_STOCK_TRACKER_CONFIGURATION_DIRECTORY\"")]
-    ConfigHomeDirectoryNotFoundError,
-    #[error("Command string not recognized.")]
-    CommandInvalidError,
-    #[error("Unexpected error: attempted to login as user {0}, but user {0} was not found.")]
-    StateInvalidUserError(String),
-    #[error("Input not recognized.")]
-    InvalidInputError,
-}
-
-/// The 'UserCommand' enum represents the variety of input cases relating to users
-#[derive(Debug)]
-pub enum UserCommand {
-    Create,
-    Delete,
-    Login,
-    Logout,
-    Showall,
-}
-
-/// The 'StockCommand' enum represents the variety of input cases relating to stocks
-#[derive(Debug)]
-pub enum StockCommand {
-    Create,
-}
-
-/// The `Command` enum represents the variety of input cases a user could specify.
-#[derive(Debug)]
-pub enum Command {
-    Init,
-    // Zero State Commands
-    UserC(UserCommand),
-    // Logged In Commands
-    StockC(StockCommand),
-}
-
-
-impl Command {
-
-    /// Constructor for the `Command` enum to parse a `String` input
-    pub fn new(s: &str) -> Result<Command, ProjectError> {
-        Ok(match String::from(s).to_lowercase().as_str() {
-            // Zero State Commands
-            "i" | "init" => Command::Init,
-            "cu" | "create-user" => Command::UserC(UserCommand::Create),
-            "du" | "delete-user" => Command::UserC(UserCommand::Delete),
-            "li" | "login" => Command::UserC(UserCommand::Login),
-            "lo" | "logout" => Command::UserC(UserCommand::Logout),
-            "sa" | "showall" => Command::UserC(UserCommand::Showall),
-            // Logged In Commands
-            "cs" | "create-stock" => Command::StockC(StockCommand::Create),
-            _ => return Err(CommandInvalidError),
-        })
-    }
-
-    /// Returns the number of arguments expected after the `Command`
-    pub fn num_args(&self) -> i32 {
-        match self {
-            // Zero State Commands
-            Command::Init => 0,
-            Command::UserC(UserCommand::Create) => 1,
-            Command::UserC(UserCommand::Delete) => 1,
-            Command::UserC(UserCommand::Login) => 1,
-            Command::UserC(UserCommand::Logout) => 0,
-            Command::UserC(UserCommand::Showall) => 0,
-            // Logged In Commands
-            Command::StockC(StockCommand::Create)  => 1,
-        }
-    }
-}
-
-impl fmt::Display for Command {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self{
-            // Zero State Commands
-            Command::Init => "init",
-            Command::UserC(UserCommand::Create) => "create-user",
-            Command::UserC(UserCommand::Delete) => "delete-user",
-            Command::UserC(UserCommand::Login) => "login",
-            Command::UserC(UserCommand::Logout) => "logout",
-            Command::UserC(UserCommand::Showall) => "showall",
-            // Logged In Commands
-            Command::StockC(StockCommand::Create) => "create-stock"
-        })
-    }
-}
 
 /// The `Config` struct represents the CLI input state of a call to this program.
 pub struct Config {
@@ -307,13 +195,17 @@ impl State {
 /// The `run` function represents the runtime logic of the program
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     match config.command {
+        // Zero State Commands
         Command::Init => init(config)?,
-        Command::UserC(UserCommand::Create) => create_user(config)?,
-        Command::UserC(UserCommand::Delete) => delete_user(config)?,
-        Command::UserC(UserCommand::Login) => login(config)?,
-        Command::UserC(UserCommand::Logout) => logout(config)?,
-        Command::UserC(UserCommand::Showall) => showall(config)?,
-        Command::StockC(StockCommand::Create) => create_stock(config)?,
+        Command::UserC(UserCommand::Create)     => create_user(config)?,
+        Command::UserC(UserCommand::Delete)     => delete_user(config)?,
+        Command::UserC(UserCommand::Login)      => login(config)?,
+        Command::UserC(UserCommand::Logout)     => logout(config)?,
+        Command::UserC(UserCommand::Showall)    => showall(config)?,
+        Command::StockC(StockCommand::Create)   => create_stock(config)?,
+        Command::StockC(StockCommand::Delete)   => delete_stock(config)?,
+        // Logged In Commands
+        Command::StockC(StockCommand::Buy)      => buy_stock(config)?,
     };
 
     Ok(())
@@ -325,8 +217,10 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 /// The `init` function produces a HashMap at a default location
 fn init(config: Config) -> Result<(), ProjectError> {
-    let hashmap = HashMap::<String, User>::new();
-    write_to_hashmap(&config.user_map_path(), &hashmap)
+    let user_map = HashMap::<String, User>::new();
+    let stock_map = HashMap::<String, Stock>::new();
+    write_to_hashmap(&config.user_map_path(), &user_map)?;
+    write_to_hashmap(&config.stock_map_path(), &stock_map)
 }
 
 /// The `create_user` function opens the HashMap and inserts a new user. 
@@ -374,7 +268,7 @@ fn delete_user(config: Config) -> Result<(), ProjectError> {
     }
 }
 
-/// The `login` function queries the user for a password, opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
+/// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
 fn login(config: Config) -> Result<(), Box<dyn Error>>{
     // Setup
     let username = String::from(&config.remainder[0]);
@@ -394,23 +288,111 @@ fn logout(config: Config) -> Result<(), ProjectError>{
     Ok(())
 }
 
-/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stoc<P: AsRef<Path>>ks.
+/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stocks
 fn showall(config: Config) -> Result<(), ProjectError>{
-    unimplemented!()
+    let username = match State::init(&config)?.current_user {
+        Some(x) => x,
+        None => return Err(StateNoUserError),
+    };
+
+    let user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
+    let user = if !user_map.contains_key(&username) {
+        return Err(HashMapKeyNotFoundError(String::from(username)))
+    } else {
+        user_map.get(&username).unwrap() // We can be confident this will be Some()
+    };
+
+    println!("User profile {} has:", username);
+
+    for (_, stock_unit) in match user.portfolio {
+        Some(x) => x.iter(),
+        None => {
+            println!("No holdings");
+            return Ok(())
+        },
+    } {
+        println!("{}: {} shares", stock_unit.stock.ticker, stock_unit.quantity);
+    }
+
+    Ok(())
 }
 
+/// The `create_stock` function opens the StockMap and inserts a new stock.
 fn create_stock(config: Config) -> Result<(), ProjectError>{
-    unimplemented!()
+    let stock_id = &config.remainder[0];
+
+    let f = |hashmap: &mut HashMap<String, Stock>| {
+        hashmap.try_insert(String::from(stock_id), Stock::new().map_err(|_| StockNewError)?)
+        .map_or_else(|_| Err(HashMapInsertError(String::from(stock_id))), |_| Ok(()))
+    };
+
+    modify_hashmap(&config.stock_map_path(), f)
+}
+
+/// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
+fn delete_stock(config: Config) -> Result<(), ProjectError>{
+    let stock_id = &config.remainder[0];
+
+    // Make sure the user wants to delete
+    println!("Are you sure you want to delete stock {}", stock_id.to_string());
+
+    let mut ans = String::new();
+    io::stdin().read_line(&mut ans).map_err(|_| UserNewError)?;
+
+    // Remove the newline
+    let ans = ans.trim();
+
+    match ans.to_lowercase().as_str() {
+        // In the case where the user is sure
+        "y" | "yes" => {
+            let f = |hashmap: &mut HashMap<String, Stock>| hashmap
+                .remove(&stock_id.to_string()) // Remove
+                .ok_or_else(|| HashMapRemoveError(stock_id.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
+            modify_hashmap(&config.stock_map_path(), f)
+        },
+        // In the case where the user declines
+        "q" | "quit" | "n" | "no" => Ok(()),
+        // In the case where the user input is not recognized
+        _ => Err(InvalidInputError),
+    }
+}
+
+/// The `buy_stock` function opens the StockMap, find
+fn buy_stock(config: Config) -> Result<(), ProjectError>{
+    let stock_id = &config.remainder[0];
+    let stock_qt: u32 = config.remainder[1].parse().map_err(|_| ParseError)?;
+    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.user_map_path())?;
+    // Check availability of stock and retrieve it if available
+    let stock = if !stock_map.contains_key(stock_id) {
+        return Err(HashMapKeyNotFoundError(String::from(stock_id)))
+    } else {
+        stock_map.get(stock_id).unwrap() // We can be confident this will be Some()
+    };
+
+    let username = match State::init(&config)?.current_user {
+        Some(x) => x,
+        None => return Err(StateNoUserError),
+    };
+    let mut user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
+    // Check availability of user and retrieve it if available
+    let user = if !user_map.contains_key(&username) {
+        return Err(HashMapKeyNotFoundError(String::from(username)))
+    } else {
+        user_map.get_mut(&username).unwrap() // We can be confident this will be Some()
+    };
+
+    user.add_stock(stock, stock_qt)
 }
 
 //
 // Assistive functions
 //
 
-/// The `read_from_hashmap` function takes a `Path` and returns the `HashMap<String, User>` located at that path
+/// The `read_from_hashmap` function takes a `Path` and returns the `HashMap<String, T>` located at that path
 /// using `serde_JSON` to read the file.
-fn read_from_hashmap<P: AsRef<Path>>(path: &P) -> Result<HashMap<String, User>, ProjectError> {
-
+fn read_from_hashmap<P, T>(path: &P) -> Result<HashMap<String, T>, ProjectError> where
+    P: AsRef<Path>,
+    T: serde::de::DeserializeOwned, {
     let file = match fs::File::open(path) {
         Ok(x) => x,
         Err(_) => return Err(IOHashMapOpenError(PathBuf::from(path.as_ref())))
@@ -423,7 +405,9 @@ fn read_from_hashmap<P: AsRef<Path>>(path: &P) -> Result<HashMap<String, User>, 
 
 /// The 'write_to_hashmap` function takes a `Path` and a `HashMap<String, User>` and writes the
 /// `HashMap<String, User>` to the file located at that path using `serde_JSON` to write the file.
-fn write_to_hashmap<P: AsRef<Path>>(path: &P, hashmap: &HashMap<String, User>) -> Result<(), ProjectError> {
+fn write_to_hashmap<P, T>(path: &P, hashmap: &HashMap<String, T>) -> Result<(), ProjectError> where
+    P: AsRef<Path>,
+    T: serde::ser::Serialize, {
     
     let serialized_hashmap = serde_json::to_string(hashmap).map_err(|_| SerializeJSONError)?;
 
@@ -435,13 +419,14 @@ fn write_to_hashmap<P: AsRef<Path>>(path: &P, hashmap: &HashMap<String, User>) -
     file.write_all(serialized_hashmap.as_bytes()).map_err(|_| IOHashMapWriteError(PathBuf::from(path.as_ref())))
 }
 
-fn modify_hashmap<P, F>(path: &P, f: F) -> Result<(), ProjectError> where 
+fn modify_hashmap<P, F, T>(path: &P, f: F) -> Result<(), ProjectError> where 
     P: AsRef<Path>,
-    F: Fn(&mut HashMap<String, User>) -> Result<(), ProjectError> {
+    F: Fn(&mut HashMap<String, T>) -> Result<(), ProjectError>,
+    T: serde::ser::Serialize + serde::de::DeserializeOwned, {
     
     let hashmap = &mut read_from_hashmap(path)?;
     f(hashmap)?;
-    write_to_hashmap(path, &hashmap)
+    write_to_hashmap::<P, T>(path, hashmap)
 }
 
 // Testing
