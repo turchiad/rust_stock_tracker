@@ -18,7 +18,7 @@ use crate::error::ProjectError::*;
 /// A complete representation of a user and all of their corresponding data.
 #[derive(Serialize, Deserialize, Clone, Debug, Display)]
 #[display(fmt = "{} {}", first_name, last_name)]
-pub struct User<'a> {
+pub struct User {
     /// A user's username. Special characters such as !,?,&,| are not valid.
     username: String,
 
@@ -29,12 +29,12 @@ pub struct User<'a> {
     /// A user's middle initial
     middle_initial: String,
     /// A collection of the user's stocks
-    pub portfolio: Option::<HashMap::<String, StockUnit<'a>>>,
+    pub portfolio: Option::<HashMap::<String, StockUnit>>,
 }
 
 
-impl User<'_> {
-    pub fn new() -> Result<User<'static>, ProjectError> {
+impl User {
+    pub fn new() -> Result<User, ProjectError> {
         return Ok(User {
             username: String::from("username"),
             first_name: String::from("first_name"),
@@ -45,16 +45,27 @@ impl User<'_> {
     }
 
     pub fn add_stock(&mut self, stock: &Stock, qt: u32) -> Result<(), ProjectError> {
-        match self.portfolio {
-            Some(hashmap) => match hashmap.try_insert(stock.ticker.clone(), StockUnit::new(&stock, qt)?) {
-                    Ok(_) => Ok(()),
+        match &mut self.portfolio {
+            Some(hashmap) => match hashmap.try_insert(stock.ticker.clone(), StockUnit::new(stock.clone(), qt)?) {
+                    Ok(_) => {Ok(())},
                     Err(_) => self.add_stock_additional(stock, qt),
                 }
+            None => { // Generate a new hashmap for `portfolio` and add our stock_unit to it.
+                let mut hashmap = HashMap::<String, StockUnit>::new();
+                hashmap.insert(stock.ticker.clone(), StockUnit::new(stock.clone(), qt)?);
+                self.portfolio = Some(hashmap);
+                Ok(())
+            },
         }
     }
 
-    fn add_stock_additional(&self, stock: &Stock, qt: u32) -> Result<(), ProjectError> {
-        unimplemented!()
+    fn add_stock_additional(&mut self, stock: &Stock, qt: u32) -> Result<(), ProjectError> {
+        match &mut self.portfolio {
+            Some(hashmap) => {
+                let stock_unit = hashmap.get_mut(&stock.ticker).unwrap(); // We can be confident get will be Some()
+                stock_unit.add_stock(qt)
+            }, None => Err(ImpossibleStateError)
+        }
     }
 }
 

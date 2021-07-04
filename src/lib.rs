@@ -304,7 +304,7 @@ fn showall(config: Config) -> Result<(), ProjectError>{
 
     println!("User profile {} has:", username);
 
-    for (_, stock_unit) in match user.portfolio {
+    for (_, stock_unit) in match &user.portfolio {
         Some(x) => x.iter(),
         None => {
             println!("No holdings");
@@ -322,7 +322,7 @@ fn create_stock(config: Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, Stock>| {
-        hashmap.try_insert(String::from(stock_id), Stock::new().map_err(|_| StockNewError)?)
+        hashmap.try_insert(String::from(stock_id), Stock::new_from_ticker(stock_id).map_err(|_| StockNewError)?)
         .map_or_else(|_| Err(HashMapInsertError(String::from(stock_id))), |_| Ok(()))
     };
 
@@ -361,7 +361,7 @@ fn delete_stock(config: Config) -> Result<(), ProjectError>{
 fn buy_stock(config: Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
     let stock_qt: u32 = config.remainder[1].parse().map_err(|_| ParseError)?;
-    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.user_map_path())?;
+    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
     // Check availability of stock and retrieve it if available
     let stock = if !stock_map.contains_key(stock_id) {
         return Err(HashMapKeyNotFoundError(String::from(stock_id)))
@@ -381,7 +381,9 @@ fn buy_stock(config: Config) -> Result<(), ProjectError>{
         user_map.get_mut(&username).unwrap() // We can be confident this will be Some()
     };
 
-    user.add_stock(stock, stock_qt)
+    // Alter user and write map.
+    user.add_stock(stock, stock_qt)?;
+    write_to_hashmap(&config.user_map_path(), &user_map)
 }
 
 //

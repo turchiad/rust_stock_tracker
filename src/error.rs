@@ -49,4 +49,6 @@ pub enum ProjectError {
     StateNoUserError,
     #[error("Input not recognized.")]
     InvalidInputError,
+    #[error("Unexpected error: impossible state.")]
+    ImpossibleStateError,
 }

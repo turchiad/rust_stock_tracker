@@ -28,23 +28,42 @@ impl Stock {
             value: 0.0,
         })
     }
+
+    pub fn new_from_ticker(ticker: &str) -> Result<Stock, ProjectError> {
+        return Ok( Stock {
+            ticker: String::from(ticker),
+            company_name: String::from("company_name"),
+            value: 0.0,
+        })
+    }
 }
 
 /// A representative of amount of stocks one owns
 #[derive(Serialize, Clone, Deserialize, Debug)]
-pub struct StockUnit<'a> {
+pub struct StockUnit {
     /// The Stock signature of the company
-    pub stock: &'a Stock,
+    pub stock: Stock,
     /// The quantity of shares of `Stock`
     pub quantity: u32,
 }
 
-impl<'a> StockUnit<'a> {
-    pub fn new(stock: &'a Stock, quantity: u32) -> Result<StockUnit, ProjectError> {
+impl StockUnit {
+    pub fn new(stock: Stock, quantity: u32) -> Result<StockUnit, ProjectError> {
         return Ok( StockUnit {
             stock: stock,
             quantity: quantity,
         })
+    }
+
+    /// This method adds `quantity` to `self.quantity` and returns an `InvalidInputError` if the provided value is less
+    /// than or equal to zero.
+    pub fn add_stock(&mut self, quantity: u32) -> Result<(), ProjectError> {
+        if quantity > 0 {
+            self.quantity += quantity;
+            Ok(())
+        } else {
+            Err(InvalidInputError)
+        }
     }
 }
 
