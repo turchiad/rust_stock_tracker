@@ -19,7 +19,6 @@ use crate::user::User;
 
 // std
 use std::collections::HashMap; // So we may construct HashMaps of passwords & users
-use std::error::Error; // So we may define Box<dyn Error> // To allow for the use of `env::Args` in setting up `Config`
 use std::env; // So we can set the configuration path by environment variables
 use std::fs; // So we may read/write to files.
 use std::io;
@@ -44,7 +43,12 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new<Args: Iterator<Item = String>>(mut args: Args) -> Result<Config, ProjectError> {
+    pub fn new<I, T> (args: I) -> Result<Config, ProjectError> where
+    I: Iterator<Item = T>,
+    T: Into<String>, {
+        // Convert to `T` to `String`
+        let mut args = args.map(Into::into);
+
         args.next(); // Discard the first argument
 
         // command
@@ -139,7 +143,7 @@ impl State {
 
     /// `set_user()` simply sets the state to logged_in, applies the username provided to `current_user` and writes
     /// this to the state file.
-    pub fn set_user(&mut self, config: Config, username: &str) -> Result<(), ProjectError> {
+    pub fn set_user(&mut self, config: &Config, username: &str) -> Result<(), ProjectError> {
         self.logged_in = true;
         self.current_user = Some(String::from(username));
         self.write(config)
@@ -147,7 +151,7 @@ impl State {
 
     /// `try_set_user()` attempts to set the user to `username`, but checks the `HashMap` provided to ensure that it is
     /// valid before returning. Like `set_user()`, this method returns a result.
-    pub fn try_set_user(&mut self, config: Config, username: &str, hashmap: HashMap<String, User>) -> Result<(), ProjectError> {
+    pub fn try_set_user(&mut self, config: &Config, username: &str, hashmap: HashMap<String, User>) -> Result<(), ProjectError> {
         if !self.valid_user(username, hashmap) {
             return Err(StateInvalidUserError(String::from(username)))
         } else {
@@ -158,13 +162,13 @@ impl State {
     }
 
     /// Returns to a "logged out" state
-    pub fn clear_user(&mut self, config: Config) -> Result<(), ProjectError> {
+    pub fn clear_user(&mut self, config: &Config) -> Result<(), ProjectError> {
         self.logged_in = false;
         self.current_user = None;
         self.write(config)
     }
 
-    pub fn write(&self, config: Config) -> Result<(), ProjectError> {
+    pub fn write(&self, config: &Config) -> Result<(), ProjectError> {
         let path = &config.configuration_directory.join("State.JSON");
 
         let mut file = match fs::File::create(path) {
@@ -194,7 +198,7 @@ impl State {
 }
 
 /// The `run` function represents the runtime logic of the program
-pub fn run(config: Config) -> Result<(), ProjectError> {
+pub fn run(config: &Config) -> Result<(), ProjectError> {
     match config.command {
         // Special Commands
         Command::Init => init(config)?,
@@ -220,43 +224,51 @@ pub fn run(config: Config) -> Result<(), ProjectError> {
 //
 
 /// The `init` function produces a HashMap at a default location
-fn init(config: Config) -> Result<(), ProjectError> {
+fn init(config: &Config) -> Result<(), ProjectError> {
     let user_map = HashMap::<String, User>::new();
     let stock_map = HashMap::<String, Stock>::new();
     write_to_hashmap(&config.user_map_path(), &user_map)?;
     write_to_hashmap(&config.stock_map_path(), &stock_map)
 }
 
-fn console_mode(config: Config) -> Result<(), ProjectError> {
+fn console_mode(_config: &Config) -> Result<(), ProjectError> {
     // Notify the user that they have entered console mode
     println!("Entering console mode...");
     
     loop { // Loop until exited
         print!(">");
-        let mut command_string = String::new();
+        io::stdout().flush().unwrap();
+
+        let mut args_string = String::new();
         io::stdin()
-            .read_line(&mut command_string)
+            .read_line(&mut args_string)
             .map_err(|_| InvalidInputError)?;
 
-        let config = config.clone();            
+        // The config constructor expects the first argument to be the call to the program
+        let args = format!("filler {}", args_string); // To satisfy macro requirements this is on its own line
+        let args = args.split_ascii_whitespace();
+        // Construct a new config for the console-mode loop instance
+        let this_config = match Config::new(args) {
+            Ok(x) => x,
+            Err(_) => { println!("Command not recognized."); continue},
+        };
 
         // Accept command inputs
-        match Command::new(&command_string)? {
-
+        match this_config.command {
             // Special Commands
-            Command::Init => init(config)?,
-            Command::Console => console_mode(config)?,
+            Command::Init => init(&this_config)?,
+            Command::Console => console_mode(&this_config)?,
             Command::Exit => {println!("Exiting..."); return Ok(())}, // should only be accessible from within console_mode
             // Zero State Commands
-            Command::UserC(UserCommand::Create)     => create_user(&config)?,
-            Command::UserC(UserCommand::Delete)     => delete_user(config)?,
-            Command::UserC(UserCommand::Login)      => login(config)?,
-            Command::UserC(UserCommand::Logout)     => logout(config)?,
-            Command::UserC(UserCommand::Showall)    => showall(config)?,
-            Command::StockC(StockCommand::Create)   => create_stock(config)?,
-            Command::StockC(StockCommand::Delete)   => delete_stock(config)?,
+            Command::UserC(UserCommand::Create)     => create_user(&this_config)?,
+            Command::UserC(UserCommand::Delete)     => delete_user(&this_config)?,
+            Command::UserC(UserCommand::Login)      => login(&this_config)?,
+            Command::UserC(UserCommand::Logout)     => logout(&this_config)?,
+            Command::UserC(UserCommand::Showall)    => showall(&this_config)?,
+            Command::StockC(StockCommand::Create)   => create_stock(&this_config)?,
+            Command::StockC(StockCommand::Delete)   => delete_stock(&this_config)?,
             // Logged In Commands
-            Command::StockC(StockCommand::Buy)      => buy_stock(config)?,
+            Command::StockC(StockCommand::Buy)      => buy_stock(&this_config)?,
         };
     }
 }
@@ -264,18 +276,18 @@ fn console_mode(config: Config) -> Result<(), ProjectError> {
 /// The `create_user` function opens the HashMap and inserts a new user. 
 fn create_user(config: &Config) -> Result<(), ProjectError> {
 
-    let username = config.remainder[0];
+    let username = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, User>| {
-        hashmap.try_insert(String::from(&username), User::new().map_err(|_| UserNewError)?)
-        .map_or_else(|_| Err(HashMapInsertError(String::from(&username))), |_| Ok(()))
+        hashmap.try_insert(String::from(username), User::new().map_err(|_| UserNewError)?)
+        .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
     modify_hashmap(&config.user_map_path(), f)
 }
 
 /// The `delete_user` function queries the user for a confirmation, opens the HashMap, and deletes a user.
-fn delete_user(config: Config) -> Result<(), ProjectError> {
+fn delete_user(config: &Config) -> Result<(), ProjectError> {
     
     let username = &config.remainder[0];
 
@@ -296,7 +308,7 @@ fn delete_user(config: Config) -> Result<(), ProjectError> {
         "y" | "yes" => {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
-                .ok_or_else(|| HashMapRemoveError(username.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
+                .ok_or_else(|| HashMapRemoveError(String::from(username))).map(|_| ()); // Handle Option -> Result & discarding User
             modify_hashmap(&config.user_map_path(), f)
         },
         // In the case where the user declines
@@ -307,10 +319,10 @@ fn delete_user(config: Config) -> Result<(), ProjectError> {
 }
 
 /// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
-fn login(config: Config) -> Result<(), ProjectError>{
+fn login(config: &Config) -> Result<(), ProjectError>{
     // Setup
     let username = String::from(&config.remainder[0]);
-    let mut state = State::init(&config)?;
+    let mut state = State::init(config)?;
     let hashmap = read_from_hashmap(&config.user_map_path())?;
     // Login
     state.try_set_user(config, &username, hashmap)?;
@@ -319,16 +331,16 @@ fn login(config: Config) -> Result<(), ProjectError>{
 }
 
 /// The `logout` function deactivates the state where certain commands will be applied on the user in question.
-fn logout(config: Config) -> Result<(), ProjectError>{
-    let mut state = State::init(&config)?;
+fn logout(config: &Config) -> Result<(), ProjectError>{
+    let mut state = State::init(config)?;
     state.clear_user(config)?;
     println!("Logged out successfully.");
     Ok(())
 }
 
 /// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stocks
-fn showall(config: Config) -> Result<(), ProjectError>{
-    let username = match State::init(&config)?.current_user {
+fn showall(config: &Config) -> Result<(), ProjectError>{
+    let username = match State::init(config)?.current_user {
         Some(x) => x,
         None => return Err(StateNoUserError),
     };
@@ -356,7 +368,7 @@ fn showall(config: Config) -> Result<(), ProjectError>{
 }
 
 /// The `create_stock` function opens the StockMap and inserts a new stock.
-fn create_stock(config: Config) -> Result<(), ProjectError>{
+fn create_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, Stock>| {
@@ -368,7 +380,7 @@ fn create_stock(config: Config) -> Result<(), ProjectError>{
 }
 
 /// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
-fn delete_stock(config: Config) -> Result<(), ProjectError>{
+fn delete_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
 
     // Make sure the user wants to delete
@@ -396,7 +408,7 @@ fn delete_stock(config: Config) -> Result<(), ProjectError>{
 }
 
 /// The `buy_stock` function opens the StockMap, find
-fn buy_stock(config: Config) -> Result<(), ProjectError>{
+fn buy_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
     let stock_qt: u32 = config.remainder[1].parse().map_err(|_| ParseError)?;
     let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;

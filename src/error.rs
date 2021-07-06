@@ -1,4 +1,4 @@
-//! #user
+//! #error
 //!
 //! This holds the `Error` type and related methods
 
@@ -47,7 +47,7 @@ pub enum ProjectError {
     StateInvalidUserError(String),
     #[error("Command attempted without logging in.")]
     StateNoUserError,
-    #[error("Input not recognized.")]
+    #[error("Invalid input.")]
     InvalidInputError,
     #[error("Unexpected error: impossible state.")]
     ImpossibleStateError,

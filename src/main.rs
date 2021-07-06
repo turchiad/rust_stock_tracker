@@ -17,7 +17,7 @@ fn main() {
     };
 
     // Program Logic
-    if let Err(e) = stock_tracker::run(config) {
+    if let Err(e) = stock_tracker::run(&config) {
         eprintln!("Application error: {}", e);
         process::exit(1);
     }
