@@ -33,6 +33,7 @@ use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be writ
 use serde_json; // So we may write and read the HashMap to JSON
 
 /// The `Config` struct represents the CLI input state of a call to this program.
+#[derive(Debug, Clone)]
 pub struct Config {
     /// The primary command immediately following the call
     pub command: Command,
@@ -193,10 +194,13 @@ impl State {
 }
 
 /// The `run` function represents the runtime logic of the program
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+pub fn run(config: Config) -> Result<(), ProjectError> {
     match config.command {
-        // Zero State Commands
+        // Special Commands
         Command::Init => init(config)?,
+        Command::Console => console_mode(config)?,
+        Command::Exit => return Err(InvalidInputError), // should only be accessible from within console_mode
+        // Zero State Commands
         Command::UserC(UserCommand::Create)     => create_user(config)?,
         Command::UserC(UserCommand::Delete)     => delete_user(config)?,
         Command::UserC(UserCommand::Login)      => login(config)?,
@@ -223,14 +227,48 @@ fn init(config: Config) -> Result<(), ProjectError> {
     write_to_hashmap(&config.stock_map_path(), &stock_map)
 }
 
-/// The `create_user` function opens the HashMap and inserts a new user. 
-fn create_user(config: Config) -> Result<(), ProjectError> {
+fn console_mode(config: Config) -> Result<(), ProjectError> {
+    // Notify the user that they have entered console mode
+    println!("Entering console mode...");
+    
+    loop { // Loop until exited
+        print!(">");
+        let mut command_string = String::new();
+        io::stdin()
+            .read_line(&mut command_string)
+            .map_err(|_| InvalidInputError)?;
 
-    let username = &config.remainder[0];
+        let config = config.clone();            
+
+        // Accept command inputs
+        match Command::new(&command_string)? {
+
+            // Special Commands
+            Command::Init => init(config)?,
+            Command::Console => console_mode(config)?,
+            Command::Exit => {println!("Exiting..."); return Ok(())}, // should only be accessible from within console_mode
+            // Zero State Commands
+            Command::UserC(UserCommand::Create)     => create_user(&config)?,
+            Command::UserC(UserCommand::Delete)     => delete_user(config)?,
+            Command::UserC(UserCommand::Login)      => login(config)?,
+            Command::UserC(UserCommand::Logout)     => logout(config)?,
+            Command::UserC(UserCommand::Showall)    => showall(config)?,
+            Command::StockC(StockCommand::Create)   => create_stock(config)?,
+            Command::StockC(StockCommand::Delete)   => delete_stock(config)?,
+            // Logged In Commands
+            Command::StockC(StockCommand::Buy)      => buy_stock(config)?,
+        };
+    }
+}
+
+/// The `create_user` function opens the HashMap and inserts a new user. 
+fn create_user(config: &Config) -> Result<(), ProjectError> {
+
+    let username = config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, User>| {
-        hashmap.try_insert(String::from(username), User::new().map_err(|_| UserNewError)?)
-        .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
+        hashmap.try_insert(String::from(&username), User::new().map_err(|_| UserNewError)?)
+        .map_or_else(|_| Err(HashMapInsertError(String::from(&username))), |_| Ok(()))
     };
 
     modify_hashmap(&config.user_map_path(), f)
@@ -269,7 +307,7 @@ fn delete_user(config: Config) -> Result<(), ProjectError> {
 }
 
 /// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
-fn login(config: Config) -> Result<(), Box<dyn Error>>{
+fn login(config: Config) -> Result<(), ProjectError>{
     // Setup
     let username = String::from(&config.remainder[0]);
     let mut state = State::init(&config)?;
