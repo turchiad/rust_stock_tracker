@@ -228,12 +228,14 @@ fn init(config: &Config) -> Result<(), ProjectError> {
     let user_map = HashMap::<String, User>::new();
     let stock_map = HashMap::<String, Stock>::new();
     write_to_hashmap(&config.user_map_path(), &user_map)?;
-    write_to_hashmap(&config.stock_map_path(), &stock_map)
+    write_to_hashmap(&config.stock_map_path(), &stock_map)?;
+    notify("All user/stock data reset/initialized.");
+    Ok(())
 }
 
 fn console_mode(_config: &Config) -> Result<(), ProjectError> {
     // Notify the user that they have entered console mode
-    println!("Entering console mode...");
+    notify("Entering console mode...");
     
     loop { // Loop until exited
         print!(">");
@@ -250,7 +252,7 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
         // Construct a new config for the console-mode loop instance
         let this_config = match Config::new(args) {
             Ok(x) => x,
-            Err(_) => { println!("Command not recognized."); continue},
+            Err(_) => { notify("Command not recognized."); continue},
         };
 
         // Accept command inputs
@@ -258,7 +260,7 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
             // Special Commands
             Command::Init => init(&this_config)?,
             Command::Console => console_mode(&this_config)?,
-            Command::Exit => {println!("Exiting..."); return Ok(())}, // should only be accessible from within console_mode
+            Command::Exit => { notify("Exiting..."); return Ok(()) }, // should only be accessible from within console_mode
             // Zero State Commands
             Command::UserC(UserCommand::Create)     => create_user(&this_config)?,
             Command::UserC(UserCommand::Delete)     => delete_user(&this_config)?,
@@ -283,7 +285,10 @@ fn create_user(config: &Config) -> Result<(), ProjectError> {
         .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
-    modify_hashmap(&config.user_map_path(), f)
+    modify_hashmap(&config.user_map_path(), f)?;
+
+    notify(&format!("User {} has been added.", username));
+    Ok(())
 }
 
 /// The `delete_user` function queries the user for a confirmation, opens the HashMap, and deletes a user.
@@ -300,22 +305,22 @@ fn delete_user(config: &Config) -> Result<(), ProjectError> {
     // Remove the newline
     let ans = ans.trim();
 
-    // Debug
-    //println!("fc: {}, lc: {}, lc == yes: {}", ans, ans.to_lowercase(), ans.to_lowercase().as_str() == "yes");
-
     match ans.to_lowercase().as_str() {
         // In the case where the user is sure
         "y" | "yes" => {
             let f = |hashmap: &mut HashMap<String, User>| hashmap
                 .remove(&username.to_string()) // Remove
                 .ok_or_else(|| HashMapRemoveError(String::from(username))).map(|_| ()); // Handle Option -> Result & discarding User
-            modify_hashmap(&config.user_map_path(), f)
+            modify_hashmap(&config.user_map_path(), f)?
         },
         // In the case where the user declines
-        "q" | "quit" | "n" | "no" => Ok(()),
+        "q" | "quit" | "n" | "no" => return Ok(()),
         // In the case where the user input is not recognized
-        _ => Err(InvalidInputError),
-    }
+        _ => return Err(InvalidInputError),
+    };
+
+    notify(&format!("User {} deleted.", username));
+    Ok(())
 }
 
 /// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
@@ -326,7 +331,7 @@ fn login(config: &Config) -> Result<(), ProjectError>{
     let hashmap = read_from_hashmap(&config.user_map_path())?;
     // Login
     state.try_set_user(config, &username, hashmap)?;
-    println!("Logged in as {} successfully.", username);
+    notify(&format!("Logged in as {} successfully.", username));
     Ok(())
 }
 
@@ -334,7 +339,7 @@ fn login(config: &Config) -> Result<(), ProjectError>{
 fn logout(config: &Config) -> Result<(), ProjectError>{
     let mut state = State::init(config)?;
     state.clear_user(config)?;
-    println!("Logged out successfully.");
+    notify("Logged out successfully.");
     Ok(())
 }
 
@@ -376,7 +381,9 @@ fn create_stock(config: &Config) -> Result<(), ProjectError>{
         .map_or_else(|_| Err(HashMapInsertError(String::from(stock_id))), |_| Ok(()))
     };
 
-    modify_hashmap(&config.stock_map_path(), f)
+    modify_hashmap(&config.stock_map_path(), f)?;
+    notify(&format!("Stock {} has been added.", stock_id));
+    Ok(())
 }
 
 /// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
@@ -398,19 +405,24 @@ fn delete_stock(config: &Config) -> Result<(), ProjectError>{
             let f = |hashmap: &mut HashMap<String, Stock>| hashmap
                 .remove(&stock_id.to_string()) // Remove
                 .ok_or_else(|| HashMapRemoveError(stock_id.to_string())).map(|_| ()); // Handle Option -> Result & discarding User
-            modify_hashmap(&config.stock_map_path(), f)
+            modify_hashmap(&config.stock_map_path(), f)?;
         },
         // In the case where the user declines
-        "q" | "quit" | "n" | "no" => Ok(()),
+        "q" | "quit" | "n" | "no" => return Ok(()),
         // In the case where the user input is not recognized
-        _ => Err(InvalidInputError),
+        _ => return Err(InvalidInputError),
     }
+
+    notify(&format!("Stock {} has been deleted.", stock_id));
+    Ok(())
 }
 
 /// The `buy_stock` function opens the StockMap, find
 fn buy_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
-    let stock_qt: u32 = config.remainder[1].parse().map_err(|_| ParseError)?;
+
+    let stock_qt = parse_or_err::<u32>(&config.remainder[1])?;
+
     let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
     // Check availability of stock and retrieve it if available
     let stock = if !stock_map.contains_key(stock_id) {
@@ -433,12 +445,29 @@ fn buy_stock(config: &Config) -> Result<(), ProjectError>{
 
     // Alter user and write map.
     user.add_stock(stock, stock_qt)?;
-    write_to_hashmap(&config.user_map_path(), &user_map)
+    write_to_hashmap(&config.user_map_path(), &user_map)?;
+
+    notify(&format!("{} shares of stock {} purchased by {}", stock_qt, stock_id, username));
+    Ok(())
 }
 
 //
 // Assistive functions
 //
+
+
+/// The `notify` function is a simple function that prints the `&str` `s` to the screen. The puropose of this
+/// function is to centralize functions that need to print a small notification message to the screen, such
+/// that if the procedure of this behavior is to be changed in the future - it can be modified in one place.
+fn notify(s: &str) {
+    println!("{}",s);
+}
+
+/// The `parse_or_err<T>()` function is a simple wrapper function that will map the error output to a `ProjectError`
+/// of the right type.
+fn parse_or_err<T>(s: &String) -> Result<T, ProjectError> where T: std::str::FromStr {
+    s.parse().map_err(|_| InputParseError(String::from(s), format!("{}", std::any::type_name::<T>())))
+}
 
 /// The `read_from_hashmap` function takes a `Path` and returns the `HashMap<String, T>` located at that path
 /// using `serde_JSON` to read the file.

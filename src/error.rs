@@ -31,8 +31,10 @@ pub enum ProjectError {
     UserNewError,
     #[error("Error creating new Stock.")]
     StockNewError,
-    #[error("Error parsing inputs, check that this call was formatted correctly.")]
-    ParseError,
+    #[error("User error parsing {0} as {1}, check that inputs are formatted correctly")]
+    InputParseError(String, String),
+    #[error("Internal error parsing {0} as {1}, check that inputs are formatted properly.")]
+    InternalParseError(String, String),
     #[error("No command string provided.")]
     ConfigNoCommandError,
     #[error("Too few arguments provided for {0}")]
