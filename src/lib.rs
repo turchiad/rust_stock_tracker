@@ -256,21 +256,28 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
         };
 
         // Accept command inputs
-        match this_config.command {
+        let result = match this_config.command {
             // Special Commands
-            Command::Init => init(&this_config)?,
-            Command::Console => console_mode(&this_config)?,
+            Command::Init => init(&this_config),
+            Command::Console => console_mode(&this_config),
             Command::Exit => { notify("Exiting..."); return Ok(()) }, // should only be accessible from within console_mode
             // Zero State Commands
-            Command::UserC(UserCommand::Create)     => create_user(&this_config)?,
-            Command::UserC(UserCommand::Delete)     => delete_user(&this_config)?,
-            Command::UserC(UserCommand::Login)      => login(&this_config)?,
-            Command::UserC(UserCommand::Logout)     => logout(&this_config)?,
-            Command::UserC(UserCommand::Showall)    => showall(&this_config)?,
-            Command::StockC(StockCommand::Create)   => create_stock(&this_config)?,
-            Command::StockC(StockCommand::Delete)   => delete_stock(&this_config)?,
+            Command::UserC(UserCommand::Create)     => create_user(&this_config),
+            Command::UserC(UserCommand::Delete)     => delete_user(&this_config),
+            Command::UserC(UserCommand::Login)      => login(&this_config),
+            Command::UserC(UserCommand::Logout)     => logout(&this_config),
+            Command::UserC(UserCommand::Showall)    => showall(&this_config),
+            Command::StockC(StockCommand::Create)   => create_stock(&this_config),
+            Command::StockC(StockCommand::Delete)   => delete_stock(&this_config),
             // Logged In Commands
-            Command::StockC(StockCommand::Buy)      => buy_stock(&this_config)?,
+            Command::StockC(StockCommand::Buy)      => buy_stock(&this_config),
+        };
+        // Check if Error command should throw exit console mode or not
+        match result {
+            Ok(_) => continue,
+            Err(x @ InputParseError(_,_)) |
+            Err(x @ HashMapKeyNotFoundError(_)) => println!("{}", x),
+            Err(x) => return Err(x),
         };
     }
 }
@@ -295,6 +302,11 @@ fn create_user(config: &Config) -> Result<(), ProjectError> {
 fn delete_user(config: &Config) -> Result<(), ProjectError> {
     
     let username = &config.remainder[0];
+
+    // Preliminary check if username exists in the user map
+    if !read_from_hashmap::<PathBuf, User>(&config.user_map_path())?.contains_key(username) {
+        return Err(HashMapKeyNotFoundError(String::from(username)))
+    }
 
     // Make sure the user wants to delete
     println!("Are you sure you want to delete user profile {}", username.to_string());
@@ -389,6 +401,11 @@ fn create_stock(config: &Config) -> Result<(), ProjectError>{
 /// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
 fn delete_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
+
+        // Preliminary check if username exists in the user map
+    if !read_from_hashmap::<PathBuf, User>(&config.stock_map_path())?.contains_key(stock_id) {
+        return Err(HashMapKeyNotFoundError(String::from(stock_id)))
+    }
 
     // Make sure the user wants to delete
     println!("Are you sure you want to delete stock {}", stock_id.to_string());
