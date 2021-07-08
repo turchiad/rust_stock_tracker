@@ -402,8 +402,8 @@ fn create_stock(config: &Config) -> Result<(), ProjectError>{
 fn delete_stock(config: &Config) -> Result<(), ProjectError>{
     let stock_id = &config.remainder[0];
 
-        // Preliminary check if username exists in the user map
-    if !read_from_hashmap::<PathBuf, User>(&config.stock_map_path())?.contains_key(stock_id) {
+    // Preliminary check if username exists in the user map
+    if !read_from_hashmap::<PathBuf, Stock>(&config.stock_map_path())?.contains_key(stock_id) {
         return Err(HashMapKeyNotFoundError(String::from(stock_id)))
     }
 
