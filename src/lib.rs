@@ -204,16 +204,18 @@ pub fn run(config: &Config) -> Result<(), ProjectError> {
         Command::Init => init(config)?,
         Command::Console => console_mode(config)?,
         Command::Exit => return Err(InvalidInputError), // should only be accessible from within console_mode
-        // Zero State Commands
-        Command::UserC(UserCommand::Create)     => create_user(config)?,
-        Command::UserC(UserCommand::Delete)     => delete_user(config)?,
-        Command::UserC(UserCommand::Login)      => login(config)?,
-        Command::UserC(UserCommand::Logout)     => logout(config)?,
-        Command::UserC(UserCommand::Showall)    => showall(config)?,
-        Command::StockC(StockCommand::Create)   => create_stock(config)?,
-        Command::StockC(StockCommand::Delete)   => delete_stock(config)?,
-        // Logged In Commands
-        Command::StockC(StockCommand::Buy)      => buy_stock(config)?,
+        // State Commands
+        Command::StateC(StateCommand::Login)            => login(config)?,
+        Command::StateC(StateCommand::Logout)           => logout(config)?,
+        // User Commands
+        Command::UserC(UserCommand::Create)             => create_user(config)?,
+        Command::UserC(UserCommand::Delete)             => delete_user(config)?,
+        // Stock Commands
+        Command::StockC(StockCommand::Create)           => create_stock(config)?,
+        Command::StockC(StockCommand::Delete)           => delete_stock(config)?,
+        // Portfolio Command
+        Command::PortfolioC(PortfolioCommand::Showall)  => showall(config)?,
+        Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(config)?,
     };
 
     Ok(())
@@ -261,16 +263,18 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
             Command::Init => init(&this_config),
             Command::Console => console_mode(&this_config),
             Command::Exit => { notify("Exiting..."); return Ok(()) }, // should only be accessible from within console_mode
-            // Zero State Commands
-            Command::UserC(UserCommand::Create)     => create_user(&this_config),
-            Command::UserC(UserCommand::Delete)     => delete_user(&this_config),
-            Command::UserC(UserCommand::Login)      => login(&this_config),
-            Command::UserC(UserCommand::Logout)     => logout(&this_config),
-            Command::UserC(UserCommand::Showall)    => showall(&this_config),
-            Command::StockC(StockCommand::Create)   => create_stock(&this_config),
-            Command::StockC(StockCommand::Delete)   => delete_stock(&this_config),
-            // Logged In Commands
-            Command::StockC(StockCommand::Buy)      => buy_stock(&this_config),
+            // State Commands
+            Command::StateC(StateCommand::Login)            => login(&this_config),
+            Command::StateC(StateCommand::Logout)           => logout(&this_config),
+            // User Commands
+            Command::UserC(UserCommand::Create)             => create_user(&this_config),
+            Command::UserC(UserCommand::Delete)             => delete_user(&this_config),
+            // State Commands
+            Command::StockC(StockCommand::Create)           => create_stock(&this_config),
+            Command::StockC(StockCommand::Delete)           => delete_stock(&this_config),
+            // Portfolio Commands
+            Command::PortfolioC(PortfolioCommand::Showall)  => showall(&this_config),
+            Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(&this_config),
         };
         // Check if Error command should throw exit console mode or not
         match result {

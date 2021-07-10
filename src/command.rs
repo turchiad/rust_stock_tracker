@@ -2,22 +2,32 @@ use crate::ProjectError;
 use crate::ProjectError::*;
 use std::fmt; // So we may define `Display` for `Command`
 
-/// The 'UserCommand' enum represents the variety of input cases relating to users
+/// `StateCommand` represents commands that relate to the state, such as logging in or out.
+#[derive(Debug, Clone)]
+pub enum StateCommand {
+    Login,
+    Logout,
+}
+
+/// `UserCommand` represents commands that relate to `User` management, such as creating or deleting `User`s.
 #[derive(Debug, Clone)]
 pub enum UserCommand {
     Create,
     Delete,
-    Login,
-    Logout,
-    Showall,
 }
 
-/// The 'StockCommand' enum represents the variety of input cases relating to stocks
+/// `StockCommand` represents commands that relate to `Stock` management, such as creating or deleting `Stock`s
 #[derive(Debug, Clone)]
 pub enum StockCommand {
-    Buy,
     Create,
     Delete,
+}
+
+/// `PortfolioCommand` represents commands that relate to management of the logged in user's `portfolio` of `StockUnit`s
+#[derive(Debug, Clone)]
+pub enum PortfolioCommand {
+    Buy,
+    Showall,
 }
 
 /// The `Command` enum represents the variety of input cases a user could specify.
@@ -26,8 +36,10 @@ pub enum Command {
     Init,
     Console,
     Exit, // Only accessible in console mode 
+    StateC(StateCommand),
     UserC(UserCommand),
     StockC(StockCommand),
+    PortfolioC(PortfolioCommand),
 }
 
 
@@ -40,16 +52,18 @@ impl Command {
             "i" | "init"            => Command::Init,
             "co" | "console"        => Command::Console,
             "q" | "quit" | "exit"   => Command::Exit,
-            // Zero State Commands
+            // State Management Commands
+            "li" | "login"          => Command::StateC(StateCommand::Login),
+            "lo" | "logout"         => Command::StateC(StateCommand::Logout),
+            // User Management Commands
             "cu" | "create-user"    => Command::UserC(UserCommand::Create),
             "du" | "delete-user"    => Command::UserC(UserCommand::Delete),
-            "li" | "login"          => Command::UserC(UserCommand::Login),
-            "lo" | "logout"         => Command::UserC(UserCommand::Logout),
-            "sa" | "showall"        => Command::UserC(UserCommand::Showall),
+            // Stock Management Commands
             "cs" | "create-stock"   => Command::StockC(StockCommand::Create),
             "ds" | "delete-stock"   => Command::StockC(StockCommand::Delete),
-            // Logged In Commands
-            "bs" | "buy-stock"      => Command::StockC(StockCommand::Buy),
+            // Portfolio Management Commands
+            "bs" | "buy-stock"      => Command::PortfolioC(PortfolioCommand::Buy),
+            "sa" | "showall"        => Command::PortfolioC(PortfolioCommand::Showall),
             _ => return Err(CommandInvalidError),
         })
     }
@@ -58,19 +72,21 @@ impl Command {
     pub fn num_args(&self) -> i32 {
         match self {
             // Special Commands
-            Command::Init                           => 0,
-            Command::Console                        => 0,
-            Command::Exit                           => 0,
-            // Zero State Commands
-            Command::UserC(UserCommand::Create)     => 1,
-            Command::UserC(UserCommand::Delete)     => 1,
-            Command::UserC(UserCommand::Login)      => 1,
-            Command::UserC(UserCommand::Logout)     => 0,
-            Command::UserC(UserCommand::Showall)    => 0,
-            Command::StockC(StockCommand::Create)   => 1,
-            Command::StockC(StockCommand::Delete)   => 1,
-            // Logged In Commands
-            Command::StockC(StockCommand::Buy)      => 2,
+            Command::Init                                   => 0,
+            Command::Console                                => 0,
+            Command::Exit                                   => 0,
+            // State Management Commands
+            Command::StateC(StateCommand::Login)            => 1,
+            Command::StateC(StateCommand::Logout)           => 0,
+            // User Management Commands
+            Command::UserC(UserCommand::Create)             => 1,
+            Command::UserC(UserCommand::Delete)             => 1,
+            // Stock Management Commands
+            Command::StockC(StockCommand::Create)           => 1,
+            Command::StockC(StockCommand::Delete)           => 1,
+            // Portfolio Management Commands
+            Command::PortfolioC(PortfolioCommand::Buy)      => 2,
+            Command::PortfolioC(PortfolioCommand::Showall)  => 0,
         }
     }
 }
@@ -79,19 +95,21 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", match self{
             // Special Commands
-            Command::Init                           => "init",
-            Command::Console                        => "console",
-            Command::Exit                           => "exit",
-            // Zero State Commands
-            Command::UserC(UserCommand::Create)     => "create-user",
-            Command::UserC(UserCommand::Delete)     => "delete-user",
-            Command::UserC(UserCommand::Login)      => "login",
-            Command::UserC(UserCommand::Logout)     => "logout",
-            Command::UserC(UserCommand::Showall)    => "showall",
-            Command::StockC(StockCommand::Create)   => "create-stock",
-            Command::StockC(StockCommand::Delete)   => "delete-stock",
-            // Logged In Commands
-            Command::StockC(StockCommand::Buy)      => "buy-stock"
+            Command::Init                                   => "init",
+            Command::Console                                => "console",
+            Command::Exit                                   => "exit",
+            // State Management Commands
+            Command::StateC(StateCommand::Login)            => "login",
+            Command::StateC(StateCommand::Logout)           => "logout",
+            // User Management Commands
+            Command::UserC(UserCommand::Create)             => "create-user",
+            Command::UserC(UserCommand::Delete)             => "delete-user",
+            // Stock Management Commands
+            Command::StockC(StockCommand::Create)           => "create-stock",
+            Command::StockC(StockCommand::Delete)           => "delete-stock",
+            // Portfolio Management Commands
+            Command::PortfolioC(PortfolioCommand::Showall)  => "showall",
+            Command::PortfolioC(PortfolioCommand::Buy)      => "buy-stock",
         })
     }
 }
