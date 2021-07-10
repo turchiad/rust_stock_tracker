@@ -210,9 +210,11 @@ pub fn run(config: &Config) -> Result<(), ProjectError> {
         // User Commands
         Command::UserC(UserCommand::Create)             => create_user(config)?,
         Command::UserC(UserCommand::Delete)             => delete_user(config)?,
+        Command::UserC(UserCommand::Edit)               => edit_user(config)?,
         // Stock Commands
         Command::StockC(StockCommand::Create)           => create_stock(config)?,
         Command::StockC(StockCommand::Delete)           => delete_stock(config)?,
+        Command::StockC(StockCommand::Edit)             => edit_stock(config)?,
         // Portfolio Command
         Command::PortfolioC(PortfolioCommand::Showall)  => showall(config)?,
         Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(config)?,
@@ -275,9 +277,11 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
             // User Commands
             Command::UserC(UserCommand::Create)             => create_user(&this_config),
             Command::UserC(UserCommand::Delete)             => delete_user(&this_config),
+            Command::UserC(UserCommand::Edit)               => edit_user(&this_config),
             // State Commands
             Command::StockC(StockCommand::Create)           => create_stock(&this_config),
             Command::StockC(StockCommand::Delete)           => delete_stock(&this_config),
+            Command::StockC(StockCommand::Edit)             => edit_stock(&this_config),
             // Portfolio Commands
             Command::PortfolioC(PortfolioCommand::Showall)  => showall(&this_config),
             Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(&this_config),
@@ -344,6 +348,12 @@ fn delete_user(config: &Config) -> Result<(), ProjectError> {
 
     notify(&format!("User {} deleted.", username));
     Ok(())
+}
+
+/// The `edit_user` function takes a user id, a property, and some value, and allows the user to modify the property of the 
+/// `User` matching the user id to the specified value, before saving the `User`.
+fn edit_user(config: &Config) -> Result<(), ProjectError> {
+    unimplemented!()
 }
 
 /// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
@@ -445,7 +455,15 @@ fn delete_stock(config: &Config) -> Result<(), ProjectError>{
     Ok(())
 }
 
-/// The `buy_stock` function opens the StockMap, find
+/// The `edit_stock` function takes a stock ticker id, a property, and some value, and allows the user to modify the property of the 
+/// `Stock` matching the stock ticker id to the specified value, before saving the stock. Note: this does not change a user's `Stock`s to
+/// the updated version, which will have the be done on the user-side.
+fn edit_stock(config: &Config) -> Result<(), ProjectError> {
+    unimplemented!()
+}
+
+/// The `buy_stock` function takes a stock ticker id and a quantity (in that order) and adds the quantity of purchased stocks
+/// to the current user's `portfolio`, finishing by saving the user.
 fn buy_stock(config: &Config) -> Result<(), ProjectError>{
     
     // Check user is logged in first

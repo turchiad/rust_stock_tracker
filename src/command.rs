@@ -14,6 +14,7 @@ pub enum StateCommand {
 pub enum UserCommand {
     Create,
     Delete,
+    Edit,
 }
 
 /// `StockCommand` represents commands that relate to `Stock` management, such as creating or deleting `Stock`s
@@ -21,6 +22,7 @@ pub enum UserCommand {
 pub enum StockCommand {
     Create,
     Delete,
+    Edit,
 }
 
 /// `PortfolioCommand` represents commands that relate to management of the logged in user's `portfolio` of `StockUnit`s
@@ -58,9 +60,11 @@ impl Command {
             // User Management Commands
             "cu" | "create-user"    => Command::UserC(UserCommand::Create),
             "du" | "delete-user"    => Command::UserC(UserCommand::Delete),
+            "eu" | "edit-user"      => Command::UserC(UserCommand::Edit),
             // Stock Management Commands
             "cs" | "create-stock"   => Command::StockC(StockCommand::Create),
             "ds" | "delete-stock"   => Command::StockC(StockCommand::Delete),
+            "es" | "edit-stock"     => Command::StockC(StockCommand::Edit),
             // Portfolio Management Commands
             "bs" | "buy-stock"      => Command::PortfolioC(PortfolioCommand::Buy),
             "sa" | "showall"        => Command::PortfolioC(PortfolioCommand::Showall),
@@ -81,9 +85,11 @@ impl Command {
             // User Management Commands
             Command::UserC(UserCommand::Create)             => 1,
             Command::UserC(UserCommand::Delete)             => 1,
+            Command::UserC(UserCommand::Edit)               => 3,
             // Stock Management Commands
             Command::StockC(StockCommand::Create)           => 1,
             Command::StockC(StockCommand::Delete)           => 1,
+            Command::StockC(StockCommand::Edit)             => 3,
             // Portfolio Management Commands
             Command::PortfolioC(PortfolioCommand::Buy)      => 2,
             Command::PortfolioC(PortfolioCommand::Showall)  => 0,
@@ -104,9 +110,11 @@ impl fmt::Display for Command {
             // User Management Commands
             Command::UserC(UserCommand::Create)             => "create-user",
             Command::UserC(UserCommand::Delete)             => "delete-user",
+            Command::UserC(UserCommand::Edit)               => "edit-user",
             // Stock Management Commands
             Command::StockC(StockCommand::Create)           => "create-stock",
             Command::StockC(StockCommand::Delete)           => "delete-stock",
+            Command::StockC(StockCommand::Edit)             => "edit-stock",
             // Portfolio Management Commands
             Command::PortfolioC(PortfolioCommand::Showall)  => "showall",
             Command::PortfolioC(PortfolioCommand::Buy)      => "buy-stock",
