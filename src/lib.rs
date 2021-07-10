@@ -227,10 +227,16 @@ pub fn run(config: &Config) -> Result<(), ProjectError> {
 
 /// The `init` function produces a HashMap at a default location
 fn init(config: &Config) -> Result<(), ProjectError> {
+    // Generate new user hashmap and write to file
     let user_map = HashMap::<String, User>::new();
-    let stock_map = HashMap::<String, Stock>::new();
     write_to_hashmap(&config.user_map_path(), &user_map)?;
+    // Generate new stock hashmap and write to file
+    let stock_map = HashMap::<String, Stock>::new();
     write_to_hashmap(&config.stock_map_path(), &stock_map)?;
+    // Log any users out of state so there are no impossible users logged in
+    let mut state = State::init(config)?;
+    state.clear_user(config)?;
+
     notify("All user/stock data reset/initialized.");
     Ok(())
 }
@@ -260,9 +266,9 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
         // Accept command inputs
         let result = match this_config.command {
             // Special Commands
-            Command::Init => init(&this_config),
-            Command::Console => console_mode(&this_config),
-            Command::Exit => { notify("Exiting..."); return Ok(()) }, // should only be accessible from within console_mode
+            Command::Init                                   => init(&this_config),
+            Command::Console                                => { notify("Already in console mode."); continue },
+            Command::Exit                                   => { notify("Exiting..."); return Ok(()) }, // should only be accessible from within console_mode
             // State Commands
             Command::StateC(StateCommand::Login)            => login(&this_config),
             Command::StateC(StateCommand::Logout)           => logout(&this_config),
@@ -280,7 +286,8 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
         match result {
             Ok(_) => continue,
             Err(x @ InputParseError(_,_)) |
-            Err(x @ HashMapKeyNotFoundError(_)) => println!("{}", x),
+            Err(x @ HashMapKeyNotFoundError(_)) |
+            Err(x @ StateNoUserError) => println!("{}", x),
             Err(x) => return Err(x),
         };
     }
@@ -404,22 +411,21 @@ fn create_stock(config: &Config) -> Result<(), ProjectError>{
 
 /// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
 fn delete_stock(config: &Config) -> Result<(), ProjectError>{
+
+    // Read stock data
     let stock_id = &config.remainder[0];
 
-    // Preliminary check if username exists in the user map
+    // Preliminary check if stock exists in the user map
     if !read_from_hashmap::<PathBuf, Stock>(&config.stock_map_path())?.contains_key(stock_id) {
         return Err(HashMapKeyNotFoundError(String::from(stock_id)))
     }
 
+
     // Make sure the user wants to delete
     println!("Are you sure you want to delete stock {}", stock_id.to_string());
-
     let mut ans = String::new();
     io::stdin().read_line(&mut ans).map_err(|_| UserNewError)?;
-
-    // Remove the newline
-    let ans = ans.trim();
-
+    let ans = ans.trim(); // Remove the newline
     match ans.to_lowercase().as_str() {
         // In the case where the user is sure
         "y" | "yes" => {
@@ -434,30 +440,34 @@ fn delete_stock(config: &Config) -> Result<(), ProjectError>{
         _ => return Err(InvalidInputError),
     }
 
+    // Closeout
     notify(&format!("Stock {} has been deleted.", stock_id));
     Ok(())
 }
 
 /// The `buy_stock` function opens the StockMap, find
 fn buy_stock(config: &Config) -> Result<(), ProjectError>{
+    
+    // Check user is logged in first
+    let username = match State::init(&config)?.current_user {
+        Some(x) => x,
+        None => return Err(StateNoUserError),
+    };
+
+    // Read necessary stock data
     let stock_id = &config.remainder[0];
-
     let stock_qt = parse_or_err::<u32>(&config.remainder[1])?;
-
-    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
+    
     // Check availability of stock and retrieve it if available
+    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
     let stock = if !stock_map.contains_key(stock_id) {
         return Err(HashMapKeyNotFoundError(String::from(stock_id)))
     } else {
         stock_map.get(stock_id).unwrap() // We can be confident this will be Some()
     };
 
-    let username = match State::init(&config)?.current_user {
-        Some(x) => x,
-        None => return Err(StateNoUserError),
-    };
-    let mut user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
     // Check availability of user and retrieve it if available
+    let mut user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
     let user = if !user_map.contains_key(&username) {
         return Err(HashMapKeyNotFoundError(String::from(username)))
     } else {
@@ -468,6 +478,7 @@ fn buy_stock(config: &Config) -> Result<(), ProjectError>{
     user.add_stock(stock, stock_qt)?;
     write_to_hashmap(&config.user_map_path(), &user_map)?;
 
+    // Closeout
     notify(&format!("{} shares of stock {} purchased by {}", stock_qt, stock_id, username));
     Ok(())
 }
