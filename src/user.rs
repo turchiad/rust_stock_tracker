@@ -15,13 +15,21 @@ use crate::stock::StockUnit;
 use crate::error::ProjectError;
 use crate::error::ProjectError::*;
 
+/// This `enum` exists to express the properties a user a might encounter in the `User.get_property()` method
+#[derive(Debug)]
+pub enum Property<'a> {
+    Username(&'a mut String),
+    FirstName(&'a mut String),
+    LastName(&'a mut String),
+    MiddleInitial(&'a mut String),
+}
+
 /// A complete representation of a user and all of their corresponding data.
 #[derive(Serialize, Deserialize, Clone, Debug, Display)]
 #[display(fmt = "{} {}", first_name, last_name)]
 pub struct User {
     /// A user's username. Special characters such as !,?,&,| are not valid.
     username: String,
-
     /// A user's first name
     first_name: String,
     /// A user's last name
@@ -34,6 +42,7 @@ pub struct User {
 
 
 impl User {
+
     pub fn new() -> Result<User, ProjectError> {
         return Ok(User {
             username: String::from("username"),
@@ -44,6 +53,19 @@ impl User {
         })
     }
 
+    /// The `get_property()` function returns a mutable reference to the property of the `User` requested based on a `String s`
+    /// which matches the name of a `User`'s corresponding property
+    pub fn get_property(&mut self, s: &str) -> Result<Property, ProjectError>{
+        match String::from(s).to_lowercase().as_str() {
+            "u" | "username"                            => Ok(Property::Username(&mut self.username)),
+            "fn" | "first-name" | "firstname"           => Ok(Property::FirstName(&mut self.first_name)),
+            "ln" | "last-name" | "lastname"             => Ok(Property::LastName(&mut self.last_name)),
+            "mi" | "middle-initial" | "middleinitial"   => Ok(Property::MiddleInitial(&mut self.middle_initial)),
+            _                                           => Err(InvalidInputError),
+        }
+    }
+
+    /// The `add_stock()` function allows a user to add a `StockUnit` with a given `Stock` and `u32` quantity
     pub fn add_stock(&mut self, stock: &Stock, qt: u32) -> Result<(), ProjectError> {
         match &mut self.portfolio {
             Some(hashmap) => match hashmap.try_insert(stock.ticker.clone(), StockUnit::new(stock.clone(), qt)?) {
@@ -67,6 +89,7 @@ impl User {
             }, None => Err(ImpossibleStateError)
         }
     }
+
 }
 
 

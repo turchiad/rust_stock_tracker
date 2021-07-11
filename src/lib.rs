@@ -291,7 +291,8 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
             Ok(_) => continue,
             Err(x @ InputParseError(_,_)) |
             Err(x @ HashMapKeyNotFoundError(_)) |
-            Err(x @ StateNoUserError) => println!("{}", x),
+            Err(x @ StateNoUserError) | 
+            Err(x @ StateInvalidUserError(_)) => println!("{}", x),
             Err(x) => return Err(x),
         };
     }
@@ -353,13 +354,62 @@ fn delete_user(config: &Config) -> Result<(), ProjectError> {
 /// The `edit_user` function takes a user id, a property, and some value, and allows the user to modify the property of the 
 /// `User` matching the user id to the specified value, before saving the `User`.
 fn edit_user(config: &Config) -> Result<(), ProjectError> {
-    unimplemented!()
+    // Reading user input 1
+    let username = &config.remainder[0];
+
+    let mut user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
+    let user = if !user_map.contains_key(username) {
+        return Err(HashMapKeyNotFoundError(String::from(username)))
+    } else {
+        user_map.get_mut(username).unwrap() // We can be confident this will be Some()
+    };
+
+    // Reading user input 2
+    let property = String::from(&config.remainder[1]);
+    let value = String::from(&config.remainder[2]);
+
+    // Do we need to update the `State`?
+    let mut update_user = false;
+    let mut new_username = "";
+
+    match user.get_property(&property)? {
+        user::Property::Username(x) => { // Must be a `String`
+            let username = x;
+            *username = value.clone(); // We clone here so we don't move `value`
+            // We also need to force an update of the `State`
+            update_user = true;
+            new_username = &value;
+        },
+        user::Property::FirstName(x) => { // Must be a `String`
+            let first_name = x;
+            *first_name = value;
+        },
+        user::Property::LastName(x) => { // Must be a `String`
+            let last_name = x;
+            *last_name = value;
+        },
+        user::Property::MiddleInitial(x) => { // Must be a `String`
+            let middle_initial = x;
+            *middle_initial = value;
+        },
+    };
+
+    // Write to hashmap
+    write_to_hashmap(&config.user_map_path(), &user_map)?;
+
+    // Update `State` if necessary
+    if update_user {
+        let mut state = State::init(config)?;
+        state.set_user(config, new_username)?;
+    }
+
+    Ok(())
 }
 
 /// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
 fn login(config: &Config) -> Result<(), ProjectError>{
     // Setup
-    let username = String::from(&config.remainder[0]);
+    let username = &config.remainder[0];
     let mut state = State::init(config)?;
     let hashmap = read_from_hashmap(&config.user_map_path())?;
     // Login
@@ -459,7 +509,40 @@ fn delete_stock(config: &Config) -> Result<(), ProjectError>{
 /// `Stock` matching the stock ticker id to the specified value, before saving the stock. Note: this does not change a user's `Stock`s to
 /// the updated version, which will have the be done on the user-side.
 fn edit_stock(config: &Config) -> Result<(), ProjectError> {
-    unimplemented!()
+    // Reading user input 1
+    let stock_id = &config.remainder[0];
+
+    let mut stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
+    let stock = if !stock_map.contains_key(stock_id) {
+        return Err(HashMapKeyNotFoundError(String::from(stock_id)))
+    } else {
+        stock_map.get_mut(stock_id).unwrap() // We can be confident this will be Some()
+    };
+
+    // Reading user input 2
+    let property = String::from(&config.remainder[1]);
+    let value = String::from(&config.remainder[2]);
+
+    match stock.get_property(&property)? {
+        stock::Property::Ticker(x) => { // Must be a `String`
+            let ticker = x;
+            *ticker = value;
+        },
+        stock::Property::CompanyName(x) => { // Must be a `String`
+            let company_name = x;
+            *company_name = value;
+        },
+        stock::Property::Value(x) => { // Must be a `f64`
+            let stock_value = x;
+            let value = parse_or_err::<f64>(&value)?; // Convert `value` to `f64`
+            *stock_value = value;
+        },
+    };
+
+    // Write to hashmap
+    write_to_hashmap(&config.stock_map_path(), &stock_map)?;
+
+    Ok(())
 }
 
 /// The `buy_stock` function takes a stock ticker id and a quantity (in that order) and adds the quantity of purchased stocks

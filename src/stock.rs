@@ -9,6 +9,14 @@ use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be writ
 use crate::error::ProjectError;
 use crate::error::ProjectError::*;
 
+/// This `enum` exists to express the properties a user a might encounter in the `Stock.get_property()` method
+#[derive(Debug)]
+pub enum Property<'a> {
+    Ticker(&'a mut String),
+    CompanyName(&'a mut String),
+    Value(&'a mut f64),
+}
+
 /// A representative value of one share of a company's stock
 #[derive(Serialize, Clone, Deserialize, Debug)]
 pub struct Stock {
@@ -35,6 +43,17 @@ impl Stock {
             company_name: String::from("company_name"),
             value: 0.0,
         })
+    }
+
+    /// The `get_property()` function returns a mutable reference to the property of the `Stock` requested based on a `String s`
+    /// which matches the name of a `User`'s corresponding property
+    pub fn get_property(&mut self, s: &str) -> Result<Property, ProjectError> {
+        match String::from(s).to_lowercase().as_str() {
+            "t" | "ticker"                              => Ok(Property::Ticker(&mut self.ticker)),
+            "cn" | "company-name" | "companyname"       => Ok(Property::CompanyName(&mut self.company_name)),
+            "v" | "value"                               => Ok(Property::Value(&mut self.value)),
+            _                                           => Err(InvalidInputError),
+        }
     }
 }
 
