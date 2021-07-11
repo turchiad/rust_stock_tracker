@@ -2,6 +2,9 @@
 //!
 //! This holds the `Stock` type and related methods
 
+// std crates
+use std::fmt;
+
 // external crates
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
 
@@ -49,11 +52,17 @@ impl Stock {
     /// which matches the name of a `User`'s corresponding property
     pub fn get_property(&mut self, s: &str) -> Result<Property, ProjectError> {
         match String::from(s).to_lowercase().as_str() {
-            "t" | "ticker"                              => Ok(Property::Ticker(&mut self.ticker)),
-            "cn" | "company-name" | "companyname"       => Ok(Property::CompanyName(&mut self.company_name)),
-            "v" | "value"                               => Ok(Property::Value(&mut self.value)),
-            _                                           => Err(InvalidInputError),
+            "t" | "ticker"                          => Ok(Property::Ticker(&mut self.ticker)),
+            "cn" | "company-name" | "companyname"   => Ok(Property::CompanyName(&mut self.company_name)),
+            "v" | "value"                           => Ok(Property::Value(&mut self.value)),
+            _                                       => Err(InvalidInputError),
         }
+    }
+}
+
+impl fmt::Display for Stock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: \n{}\nWorth ${:.2} per share", self.ticker, self.company_name, self.value)
     }
 }
 

@@ -4,10 +4,10 @@
 
 // std
 use std::collections::HashMap;
+use std::fmt;
 
 // external crates
 use serde::{Serialize, Deserialize}; // So we may prepare the HashMap to be written to a file
-use derive_more::{Display}; // So we may derive Display
 
 // internal crates
 use crate::stock::Stock;
@@ -25,8 +25,7 @@ pub enum Property<'a> {
 }
 
 /// A complete representation of a user and all of their corresponding data.
-#[derive(Serialize, Deserialize, Clone, Debug, Display)]
-#[display(fmt = "{} {}", first_name, last_name)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct User {
     /// A user's username. Special characters such as !,?,&,| are not valid.
     username: String,
@@ -46,6 +45,16 @@ impl User {
     pub fn new() -> Result<User, ProjectError> {
         return Ok(User {
             username: String::from("username"),
+            first_name: String::from("first_name"),
+            last_name: String::from("last_name"),
+            middle_initial: String::from("middle_initial"),
+            portfolio: None,
+        })
+    }
+
+    pub fn new_from_username(username: &str) -> Result<User, ProjectError> {
+        return Ok(User {
+            username: String::from(username),
             first_name: String::from("first_name"),
             last_name: String::from("last_name"),
             middle_initial: String::from("middle_initial"),
@@ -90,6 +99,16 @@ impl User {
         }
     }
 
+}
+
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:\n{} {}. {}",
+            self.username,
+            self.first_name,
+            String::from(&self.middle_initial).to_uppercase().chars().next().unwrap(),
+            self.last_name)
+    }
 }
 
 

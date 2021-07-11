@@ -18,7 +18,8 @@ use crate::stock::Stock;
 use crate::user::User;
 
 // std
-use std::collections::HashMap; // So we may construct HashMaps of passwords & users
+use std::collections::HashMap; // So we may construct HashMaps
+use std::collections::BTreeMap; // So we may construct BTreeMaps
 use std::env; // So we can set the configuration path by environment variables
 use std::fs; // So we may read/write to files.
 use std::io;
@@ -211,13 +212,15 @@ pub fn run(config: &Config) -> Result<(), ProjectError> {
         Command::UserC(UserCommand::Create)             => create_user(config)?,
         Command::UserC(UserCommand::Delete)             => delete_user(config)?,
         Command::UserC(UserCommand::Edit)               => edit_user(config)?,
+        Command::UserC(UserCommand::List)               => list_users(config)?,
         // Stock Commands
         Command::StockC(StockCommand::Create)           => create_stock(config)?,
         Command::StockC(StockCommand::Delete)           => delete_stock(config)?,
         Command::StockC(StockCommand::Edit)             => edit_stock(config)?,
+        Command::StockC(StockCommand::List)             => list_stocks(config)?,
         // Portfolio Command
-        Command::PortfolioC(PortfolioCommand::Showall)  => showall(config)?,
         Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(config)?,
+        Command::PortfolioC(PortfolioCommand::List)     => list_portfolio(config)?,
     };
 
     Ok(())
@@ -278,13 +281,15 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
             Command::UserC(UserCommand::Create)             => create_user(&this_config),
             Command::UserC(UserCommand::Delete)             => delete_user(&this_config),
             Command::UserC(UserCommand::Edit)               => edit_user(&this_config),
+            Command::UserC(UserCommand::List)               => list_users(&this_config),
             // State Commands
             Command::StockC(StockCommand::Create)           => create_stock(&this_config),
             Command::StockC(StockCommand::Delete)           => delete_stock(&this_config),
             Command::StockC(StockCommand::Edit)             => edit_stock(&this_config),
+            Command::StockC(StockCommand::List)             => list_stocks(&this_config),
             // Portfolio Commands
-            Command::PortfolioC(PortfolioCommand::Showall)  => showall(&this_config),
             Command::PortfolioC(PortfolioCommand::Buy)      => buy_stock(&this_config),
+            Command::PortfolioC(PortfolioCommand::List)     => list_portfolio(&this_config),
         };
         // Check if Error command should throw exit console mode or not
         match result {
@@ -298,13 +303,32 @@ fn console_mode(_config: &Config) -> Result<(), ProjectError> {
     }
 }
 
+/// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
+fn login(config: &Config) -> Result<(), ProjectError>{
+    // Setup
+    let username = &config.remainder[0];
+    let mut state = State::init(config)?;
+    let hashmap = read_from_hashmap(&config.user_map_path())?;
+    // Login
+    state.try_set_user(config, &username, hashmap)?;
+    notify(&format!("Logged in as {} successfully.", username));
+    Ok(())
+}
+
+/// The `logout` function deactivates the state where certain commands will be applied on the user in question.
+fn logout(config: &Config) -> Result<(), ProjectError>{
+    let mut state = State::init(config)?;
+    state.clear_user(config)?;
+    notify("Logged out successfully.");
+    Ok(())
+}
 /// The `create_user` function opens the HashMap and inserts a new user. 
 fn create_user(config: &Config) -> Result<(), ProjectError> {
 
     let username = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, User>| {
-        hashmap.try_insert(String::from(username), User::new().map_err(|_| UserNewError)?)
+        hashmap.try_insert(String::from(username), User::new_from_username(username).map_err(|_| UserNewError)?)
         .map_or_else(|_| Err(HashMapInsertError(String::from(username))), |_| Ok(()))
     };
 
@@ -369,94 +393,88 @@ fn edit_user(config: &Config) -> Result<(), ProjectError> {
     let value = String::from(&config.remainder[2]);
 
     // Do we need to update the `State`?
-    let mut update_user = false;
-    let mut new_username = "";
+    let mut update_username = false;
+    let mut new_username = String::from("");
+    let mut new_current_username = String::from("");
+
+    // Notify message (we want this to be displayed after the successful write)
+    let note; // So we can traceback unexpected behavior
 
     match user.get_property(&property)? {
         user::Property::Username(x) => { // Must be a `String`
-            let username = x;
-            *username = value.clone(); // We clone here so we don't move `value`
+            let username_property = x;
+            *username_property = value.clone(); // We clone here so we don't move `value`
             // We also need to force an update of the `State`
-            update_user = true;
-            new_username = &value;
+            update_username = true;
+            new_username = value.clone();
+            new_current_username = value.clone();
+            // Note
+            note = format!("User {} changed to {}.", username, new_username);
         },
         user::Property::FirstName(x) => { // Must be a `String`
             let first_name = x;
             *first_name = value;
+            note = format!("User {}'s first name changed to {}.", username, first_name);
         },
         user::Property::LastName(x) => { // Must be a `String`
             let last_name = x;
             *last_name = value;
+            note = format!("User {}'s last name changed to {}.", username, last_name);
         },
         user::Property::MiddleInitial(x) => { // Must be a `String`
             let middle_initial = x;
             *middle_initial = value;
+            note = format!("User {}'s middle initial changed to {}.", username, middle_initial);
         },
     };
+
+    // Remove old entry from HashMap if necessary
+    if update_username {
+        user_map.remove(username);
+        user_map.insert(String::from(new_username), user.clone());
+    }
 
     // Write to hashmap
     write_to_hashmap(&config.user_map_path(), &user_map)?;
 
-    // Update `State` if necessary
-    if update_user {
-        let mut state = State::init(config)?;
-        state.set_user(config, new_username)?;
+    // Update state if necessary
+    let mut state = State::init(config)?;
+    // If the user we changed is the one logged in
+    if update_username &&
+        match state.current_user { Some(x) => x == String::from(new_username), None => false, } {
+        state.set_user(config, &new_current_username)?;
     }
 
+    // Notify success
+    notify(&note);
+
     Ok(())
 }
 
-/// The `login` function opens the HashMap, and activates a state where certain commmands will be applied on the user in question.
-fn login(config: &Config) -> Result<(), ProjectError>{
-    // Setup
-    let username = &config.remainder[0];
-    let mut state = State::init(config)?;
-    let hashmap = read_from_hashmap(&config.user_map_path())?;
-    // Login
-    state.try_set_user(config, &username, hashmap)?;
-    notify(&format!("Logged in as {} successfully.", username));
-    Ok(())
-}
-
-/// The `logout` function deactivates the state where certain commands will be applied on the user in question.
-fn logout(config: &Config) -> Result<(), ProjectError>{
-    let mut state = State::init(config)?;
-    state.clear_user(config)?;
-    notify("Logged out successfully.");
-    Ok(())
-}
-
-/// The `showall` function relies on a logged in state and shows the current state of all the logged in user's stocks
-fn showall(config: &Config) -> Result<(), ProjectError>{
-    let username = match State::init(config)?.current_user {
-        Some(x) => x,
-        None => return Err(StateNoUserError),
-    };
-
+/// The `list_users` function lists all created `User`s in the `UserMap`
+fn list_users(config: &Config) -> Result<(), ProjectError> {
+    // Read user_map
     let user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
-    let user = if !user_map.contains_key(&username) {
-        return Err(HashMapKeyNotFoundError(String::from(username)))
-    } else {
-        user_map.get(&username).unwrap() // We can be confident this will be Some()
-    };
 
-    println!("User profile {} has:", username);
+    // If stock_map is empty, tell the user and end short
+    if user_map.is_empty() {
+        println!("No users created.")
+    }
 
-    for (_, stock_unit) in match &user.portfolio {
-        Some(x) => x.iter(),
-        None => {
-            println!("No holdings");
-            return Ok(())
-        },
-    } {
-        println!("{}: {} shares", stock_unit.stock.ticker, stock_unit.quantity);
+    // Sort the HashMap by key
+    let list: BTreeMap<String, User> = user_map.into_iter().collect();
+
+    println!("List of users:");
+    for (_, user) in list {
+        println!("{}", user);
     }
 
     Ok(())
 }
+
 
 /// The `create_stock` function opens the StockMap and inserts a new stock.
-fn create_stock(config: &Config) -> Result<(), ProjectError>{
+fn create_stock(config: &Config) -> Result<(), ProjectError> {
     let stock_id = &config.remainder[0];
 
     let f = |hashmap: &mut HashMap<String, Stock>| {
@@ -471,7 +489,6 @@ fn create_stock(config: &Config) -> Result<(), ProjectError>{
 
 /// The `delete_stock` function queries the user for a confirmation, opens the StockMap, and deletes a Stock.
 fn delete_stock(config: &Config) -> Result<(), ProjectError>{
-
     // Read stock data
     let stock_id = &config.remainder[0];
 
@@ -545,6 +562,27 @@ fn edit_stock(config: &Config) -> Result<(), ProjectError> {
     Ok(())
 }
 
+/// The `list_stocks` function lists all created `Stock`s in the `StockMap`
+fn list_stocks(config: &Config) -> Result<(), ProjectError> {
+    // Read stock_map
+    let stock_map: HashMap<String, Stock> = read_from_hashmap(&config.stock_map_path())?;
+
+    // If stock_map is empty, tell the user and end short
+    if stock_map.is_empty() {
+        println!("No stocks created.")
+    }
+
+    // Sort the HashMap by key
+    let list: BTreeMap<String, Stock> = stock_map.into_iter().collect();
+
+    println!("List of stocks:");
+    for (_, stock) in list {
+        println!("{}", stock);
+    }
+
+    Ok(())
+}
+
 /// The `buy_stock` function takes a stock ticker id and a quantity (in that order) and adds the quantity of purchased stocks
 /// to the current user's `portfolio`, finishing by saving the user.
 fn buy_stock(config: &Config) -> Result<(), ProjectError>{
@@ -584,10 +622,38 @@ fn buy_stock(config: &Config) -> Result<(), ProjectError>{
     Ok(())
 }
 
+/// The `list_portfolio` function relies on a logged in state and shows the current state of all the logged in user's stocks
+fn list_portfolio(config: &Config) -> Result<(), ProjectError>{
+    let username = match State::init(config)?.current_user {
+        Some(x) => x,
+        None => return Err(StateNoUserError),
+    };
+
+    let user_map: HashMap<String, User> = read_from_hashmap(&config.user_map_path())?;
+    let user = if !user_map.contains_key(&username) {
+        return Err(HashMapKeyNotFoundError(String::from(username)))
+    } else {
+        user_map.get(&username).unwrap() // We can be confident this will be Some()
+    };
+
+    println!("User profile {} has:", username);
+
+    for (_, stock_unit) in match &user.portfolio {
+        Some(x) => x.iter(),
+        None => {
+            println!("No holdings");
+            return Ok(())
+        },
+    } {
+        println!("{}: {} shares", stock_unit.stock.ticker, stock_unit.quantity);
+    }
+
+    Ok(())
+}
+
 //
 // Assistive functions
 //
-
 
 /// The `notify` function is a simple function that prints the `&str` `s` to the screen. The puropose of this
 /// function is to centralize functions that need to print a small notification message to the screen, such
