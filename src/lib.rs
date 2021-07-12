@@ -322,6 +322,7 @@ fn logout(config: &Config) -> Result<(), ProjectError>{
     notify("Logged out successfully.");
     Ok(())
 }
+
 /// The `create_user` function opens the HashMap and inserts a new user. 
 fn create_user(config: &Config) -> Result<(), ProjectError> {
 
@@ -392,24 +393,26 @@ fn edit_user(config: &Config) -> Result<(), ProjectError> {
     let property = String::from(&config.remainder[1]);
     let value = String::from(&config.remainder[2]);
 
-    // Do we need to update the `State`?
+    // Do we need to update the key or `State`?
     let mut update_username = false;
-    let mut new_username = String::from("");
-    let mut new_current_username = String::from("");
+    // New username placeholders for the `HashMap` key and the `State` current user (if needed)
+    let mut new_username_1 = String::from("");
+    let mut new_username_2 = String::from("");
 
     // Notify message (we want this to be displayed after the successful write)
-    let note; // So we can traceback unexpected behavior
+    let note;
 
     match user.get_property(&property)? {
         user::Property::Username(x) => { // Must be a `String`
             let username_property = x;
             *username_property = value.clone(); // We clone here so we don't move `value`
-            // We also need to force an update of the `State`
+            // We will need to update the username as a key
             update_username = true;
-            new_username = value.clone();
-            new_current_username = value.clone();
+            // We will need two owned clones of the username to insert as a key and (possibly) to insert into the `State`
+            new_username_1 = value.clone();
+            new_username_2 = value;
             // Note
-            note = format!("User {} changed to {}.", username, new_username);
+            note = format!("User {} changed to {}.", username, username_property);
         },
         user::Property::FirstName(x) => { // Must be a `String`
             let first_name = x;
@@ -430,8 +433,8 @@ fn edit_user(config: &Config) -> Result<(), ProjectError> {
 
     // Remove old entry from HashMap if necessary
     if update_username {
-        user_map.remove(username);
-        user_map.insert(String::from(new_username), user.clone());
+        let user = user_map.remove(username).unwrap(); // We can be confident this is `Some`
+        user_map.insert(new_username_1, user);
     }
 
     // Write to hashmap
@@ -441,8 +444,8 @@ fn edit_user(config: &Config) -> Result<(), ProjectError> {
     let mut state = State::init(config)?;
     // If the user we changed is the one logged in
     if update_username &&
-        match state.current_user { Some(x) => x == String::from(new_username), None => false, } {
-        state.set_user(config, &new_current_username)?;
+        match &state.current_user { Some(x) => *x == new_username_2, None => false, } {
+        state.set_user(config, &new_username_2)?;
     }
 
     // Notify success
@@ -458,7 +461,8 @@ fn list_users(config: &Config) -> Result<(), ProjectError> {
 
     // If stock_map is empty, tell the user and end short
     if user_map.is_empty() {
-        println!("No users created.")
+        println!("No users created.");
+        return Ok(())
     }
 
     // Sort the HashMap by key
@@ -540,24 +544,48 @@ fn edit_stock(config: &Config) -> Result<(), ProjectError> {
     let property = String::from(&config.remainder[1]);
     let value = String::from(&config.remainder[2]);
 
+    // Do we need to update the key?
+    let mut update_stock_id = false;
+    // New username placeholders for the `HashMap` key and the `State` current user (if needed)
+    let mut new_stock_id = String::from("");
+
+    // Notify message (we want this to be displayed after the successful write)
+    let note;
+
     match stock.get_property(&property)? {
         stock::Property::Ticker(x) => { // Must be a `String`
             let ticker = x;
-            *ticker = value;
+            *ticker = value.clone();
+            // We will need to update the stock_id as a key
+            update_stock_id = true;
+            new_stock_id = value.clone();
+            // Note
+            note = format!("Stock {} changed to {}.", stock_id, ticker);
         },
         stock::Property::CompanyName(x) => { // Must be a `String`
             let company_name = x;
             *company_name = value;
+            note = format!("Stock {} changed to {}.", stock_id, company_name);
         },
         stock::Property::Value(x) => { // Must be a `f64`
             let stock_value = x;
             let value = parse_or_err::<f64>(&value)?; // Convert `value` to `f64`
             *stock_value = value;
+            note = format!("Stock {} changed to {}.", stock_id, stock_value);
         },
     };
 
+    // Remove old entry from HashMap if necessary
+    if update_stock_id {
+        let stock = stock_map.remove(stock_id).unwrap(); // We can be confident this is `Some`
+        stock_map.insert(new_stock_id, stock);
+    }
+
     // Write to hashmap
     write_to_hashmap(&config.stock_map_path(), &stock_map)?;
+
+    // Notify success
+    notify(&note);
 
     Ok(())
 }
@@ -569,7 +597,8 @@ fn list_stocks(config: &Config) -> Result<(), ProjectError> {
 
     // If stock_map is empty, tell the user and end short
     if stock_map.is_empty() {
-        println!("No stocks created.")
+        println!("No stocks created.");
+        return Ok(())
     }
 
     // Sort the HashMap by key
